@@ -1,0 +1,1 @@
+-I"/home/angel/OpenAG/build-win" -I/home/angel/OpenAG/common -I/home/angel/OpenAG/dlls -I/home/angel/OpenAG/engine -I/home/angel/OpenAG/external -I"/home/angel/OpenAG/external/discord-rpc/include" -I/home/angel/OpenAG/game_shared -I/home/angel/OpenAG/pm_shared -I/home/angel/OpenAG/public -I/home/angel/OpenAG/utils/vgui/include

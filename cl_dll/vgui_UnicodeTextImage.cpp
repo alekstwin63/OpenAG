@@ -7,7 +7,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <winsani_in.h>
-#include <Windows.h>
+#include <windows.h>
 #include <winsani_out.h>
 
 #else

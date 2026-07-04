@@ -1,6 +1,9 @@
 #pragma once
 #include <cstdint>
 
+#define MAX_PLAYERS_ARMOR 64
+extern int g_PlayerArmor[MAX_PLAYERS_ARMOR];
+
 class CHudPlayerId : public CHudBase
 {
 	float draw_until;

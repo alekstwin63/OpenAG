@@ -30,6 +30,8 @@
 #include "weapons.h"
 #include "func_break.h"
 
+
+
 extern DLL_GLOBAL Vector		g_vecAttackDir;
 extern DLL_GLOBAL int			g_iSkillLevel;
 
@@ -837,6 +839,7 @@ GLOBALS ASSUMED SET:  g_iSkillLevel
 */
 int CBaseMonster :: TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker, float flDamage, int bitsDamageType )
 {
+
 	float	flTake;
 	Vector	vecDir;
 
@@ -847,6 +850,8 @@ int CBaseMonster :: TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker,
 	{
 		return DeadTakeDamage( pevInflictor, pevAttacker, flDamage, bitsDamageType );
 	}
+
+	float flHealthPrev = pev->health;
 
 	if ( pev->deadflag == DEAD_NO )
 	{
@@ -962,6 +967,32 @@ int CBaseMonster :: TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker,
 				SetConditions(bits_COND_HEAVY_DAMAGE);
 			}
 		}
+	}
+
+	extern int gmsgDamageDealt;
+	if ( !IsPlayer() )
+	{
+		CBaseEntity *pAttacker = CBaseEntity::Instance(pevAttacker);
+		if (pAttacker && pAttacker->IsPlayer())
+		{
+			float flHealthLost = flHealthPrev - pev->health;
+			if (pev->health < 0) flHealthLost = flHealthPrev;
+
+			if (flHealthLost > 0)
+			{
+				bool isHeadshot = (m_LastHitGroup == HITGROUP_HEAD);
+				Vector vecPos = (pev->absmin + pev->absmax) * 0.5f;
+				MESSAGE_BEGIN(MSG_ONE, gmsgDamageDealt, NULL, pAttacker->edict());
+
+					WRITE_COORD(vecPos.x);
+					WRITE_COORD(vecPos.y);
+					WRITE_COORD(vecPos.z + 10.0f);
+					WRITE_SHORT((int)flHealthLost);
+					WRITE_BYTE(isHeadshot ? 1 : 0);
+				MESSAGE_END();
+			}
+		}
+		m_LastHitGroup = HITGROUP_GENERIC;
 	}
 
 	return 1;

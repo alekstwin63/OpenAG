@@ -11,6 +11,7 @@
 #include "r_efx.h"
 #include "event_api.h"
 #include "pm_defs.h"
+#include "com_model.h"
 #include "pmtrace.h"	
 #include "pm_shared.h"
 #include "bench.h"
@@ -18,6 +19,7 @@
 #include "demo_api.h"
 
 #include "discord_integration.h"
+#include "item_timers.h"
 
 #include "particleman.h"
 
@@ -48,6 +50,7 @@ int CL_DLLEXPORT HUD_AddEntity( int type, struct cl_entity_s *ent, const char *m
 	{
 	case ET_NORMAL:
 		Bench_CheckEntity( type, ent, modelname );
+		item_timers::add_entity_hook(ent, modelname);
 		break;
 	case ET_PLAYER:
 	case ET_BEAM:
@@ -431,6 +434,8 @@ void CL_DLLEXPORT HUD_TempEntUpdate (
 	int			i;
 	TEMPENTITY	*pTemp, *pnext, *pprev;
 	float		freq, gravity, gravitySlow, life, fastFreq;
+	cvar_t* pExplosionsEnable = gEngfuncs.pfnGetCvarPointer("cl_explosions_enable");
+	bool hide_explosions = pExplosionsEnable ? (pExplosionsEnable->value == 0.0f) : false;
 
 	Vector		vAngles;
 
@@ -488,7 +493,18 @@ void CL_DLLEXPORT HUD_TempEntUpdate (
 
 		life = pTemp->die - client_time;
 		pnext = pTemp->next;
-		if ( life < 0 )
+
+		if (hide_explosions && pTemp->entity.model && pTemp->entity.model->name)
+		{
+			if (strstr(pTemp->entity.model->name, "xplo") != nullptr || strstr(pTemp->entity.model->name, "explode") != nullptr)
+			{
+				pTemp->die = client_time;
+				pTemp->flags &= ~FTENT_FADEOUT;
+				active = 0;
+			}
+		}
+
+		if ( life < 0 && active )
 		{
 			if ( pTemp->flags & FTENT_FADEOUT )
 			{

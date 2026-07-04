@@ -1,0 +1,17 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/angel/OpenAG/build-win/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/external/discord-rpc/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/external/discord-rpc/src/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/cl_dll/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/cl_dll/hl/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/common/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/dlls/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/dlls/wpn_shared/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/game_shared/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/pm_shared/cmake_install.cmake",
+		"/home/angel/OpenAG/build-win/public/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

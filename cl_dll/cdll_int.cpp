@@ -20,6 +20,7 @@
 
 #include "hud.h"
 #include "cl_util.h"
+#include "pm_defs.h"
 #include "netadr.h"
 #undef INTERFACE_H
 #include "../public/interface.h"
@@ -32,6 +33,7 @@ extern "C"
 
 #include <string.h>
 #include "hud_servers.h"
+#include "auto_join.h"
 #include "vgui_int.h"
 #include "interface.h"
 
@@ -130,9 +132,36 @@ int	CL_DLLEXPORT HUD_ConnectionlessPacket( const struct netadr_s *net_from, cons
 	return 0;
 }
 
+void (*g_pfnPlaySound_Original) ( int channel, const char *sample, float volume, float attenuation, int fFlags, int pitch ) = nullptr;
+
+void Hooked_PM_PlaySound( int channel, const char *sample, float volume, float attenuation, int fFlags, int pitch )
+{
+	if ( g_pfnPlaySound_Original )
+	{
+		if ( sample && (strncmp( sample, "player/pl_", 10 ) == 0 || strncmp( sample, "player/plyrjmp", 14 ) == 0 || strncmp( sample, "debris/wood", 11 ) == 0 || strncmp( sample, "debris/glass", 12 ) == 0) )
+		{
+			cvar_t* pFootstepVol = gEngfuncs.pfnGetCvarPointer( "cl_footstep_volume" );
+			if ( pFootstepVol )
+			{
+				volume *= pFootstepVol->value;
+				if ( volume > 1.0f ) volume = 1.0f;
+				if ( volume < 0.0f ) volume = 0.0f;
+			}
+		}
+		
+		g_pfnPlaySound_Original( channel, sample, volume, attenuation, fFlags, pitch );
+	}
+}
+
 void CL_DLLEXPORT HUD_PlayerMoveInit( struct playermove_s *ppmove )
 {
 //	RecClClientMoveInit(ppmove);
+
+	if ( ppmove && ppmove->PM_PlaySound && ppmove->PM_PlaySound != Hooked_PM_PlaySound )
+	{
+		g_pfnPlaySound_Original = ppmove->PM_PlaySound;
+		ppmove->PM_PlaySound = Hooked_PM_PlaySound;
+	}
 
 	PM_Init( ppmove );
 }
@@ -147,6 +176,12 @@ char CL_DLLEXPORT HUD_PlayerMoveTexture( char *name )
 void CL_DLLEXPORT HUD_PlayerMove( struct playermove_s *ppmove, int server )
 {
 //	RecClClientMove(ppmove, server);
+
+	if ( ppmove && ppmove->PM_PlaySound && ppmove->PM_PlaySound != Hooked_PM_PlaySound )
+	{
+		g_pfnPlaySound_Original = ppmove->PM_PlaySound;
+		ppmove->PM_PlaySound = Hooked_PM_PlaySound;
+	}
 
 	PM_Move( ppmove, server );
 }
@@ -286,6 +321,8 @@ void CL_DLLEXPORT HUD_Frame( double time )
 //	RecClHudFrame(time);
 
 	ServersThink( time );
+
+	auto_join::think();
 
 	GetClientVoiceMgr()->Frame(time);
 

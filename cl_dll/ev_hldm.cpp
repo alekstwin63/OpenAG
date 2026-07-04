@@ -24,6 +24,8 @@
 
 #include "eventscripts.h"
 #include "ev_hldm.h"
+#include "damage_numbers.h"
+#include "hud_playerid.h"
 
 #include "r_efx.h"
 #include "event_api.h"
@@ -49,6 +51,7 @@ void VectorAngles( const float *forward, float *angles );
 
 extern cvar_t *cl_lw;
 extern cvar_t *cl_righthand;
+
 
 extern "C"
 {
@@ -408,6 +411,26 @@ void EV_HLDM_FireBullets( int idx, float *forward, float *right, float *up, int 
 		// do damage, paint decals
 		if ( tr.fraction != 1.0 )
 		{
+			physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent );
+			if ( pe && pe->solid != SOLID_BSP && pe->player && EV_IsLocal( idx ) )
+			{
+				int dmg = 0;
+				bool is_head = (tr.hitgroup == 1);
+				if ( iBulletType == BULLET_PLAYER_9MM )
+					dmg = is_head ? 36 : 12;
+				else if ( iBulletType == BULLET_PLAYER_MP5 )
+					dmg = is_head ? 36 : 12;
+				else if ( iBulletType == BULLET_PLAYER_357 )
+					dmg = is_head ? 120 : 40;
+				else if ( iBulletType == BULLET_PLAYER_BUCKSHOT )
+					dmg = is_head ? 60 : 20;
+
+				if (dmg > 0)
+				{
+					damage_numbers::add_predicted_damage(tr.endpos, dmg, is_head);
+				}
+			}
+
 			switch(iBulletType)
 			{
 			default:
@@ -917,6 +940,14 @@ void EV_FireGauss( event_args_t *args )
 
 		gEngfuncs.pEventAPI->EV_PopPMStates();
 
+		if ( tr.fraction < 1.0 )
+		{
+			physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent ); 
+			if ( pe && pe->solid != SOLID_BSP && pe->player && EV_IsLocal( idx ) )
+			{
+			}
+		}
+
 		if ( tr.allsolid )
 			break;
 
@@ -1165,6 +1196,30 @@ void EV_Crowbar( event_args_t *args )
 			case 2:
 				gEngfuncs.pEventAPI->EV_WeaponAnimation ( CROWBAR_ATTACK3MISS, 1 ); break;
 		}
+
+		// Predict crowbar damage numbers
+		vec3_t forward, right, up, angles;
+		VectorCopy(gHUD.m_vecAngles, angles);
+		AngleVectors(angles, forward, right, up);
+		vec3_t vecSrc = origin;
+		vec3_t vecEnd = vecSrc + forward * 32.0f;
+		pmtrace_t tr;
+
+		gEngfuncs.pEventAPI->EV_SetUpPlayerPrediction( false, true );
+		gEngfuncs.pEventAPI->EV_PushPMStates();
+		gEngfuncs.pEventAPI->EV_SetSolidPlayers ( idx - 1 );	
+		gEngfuncs.pEventAPI->EV_SetTraceHull( 2 );
+		gEngfuncs.pEventAPI->EV_PlayerTrace( vecSrc, vecEnd, PM_STUDIO_BOX, -1, &tr );
+		
+		if ( tr.fraction < 1.0 )
+		{
+			physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent );
+			if ( pe && pe->solid != SOLID_BSP && pe->player )
+			{
+				damage_numbers::add_predicted_damage(tr.endpos, 25, false);
+			}
+		}
+		gEngfuncs.pEventAPI->EV_PopPMStates();
 	}
 }
 //======================
@@ -1246,6 +1301,12 @@ void EV_FireCrossbow2( event_args_t *args )
 	if ( tr.fraction < 1.0 )
 	{
 		physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent ); 
+		if ( pe && pe->solid != SOLID_BSP && pe->player && EV_IsLocal( idx ) )
+		{
+			bool is_head = (tr.hitgroup == 1);
+			int dmg = is_head ? 150 : 50;
+			damage_numbers::add_predicted_damage(tr.endpos, dmg, is_head);
+		}
 
 		//Not the world, let's assume we hit something organic ( dog, cat, uncle joe, etc ).
 		if ( pe->solid != SOLID_BSP )
@@ -1308,6 +1369,7 @@ void EV_FireCrossbow( event_args_t *args )
 			gEngfuncs.pEventAPI->EV_WeaponAnimation( CROSSBOW_FIRE3, 1 );
 
 		V_PunchAxis( 0, -2.0 );
+
 	}
 }
 //======================
@@ -1347,6 +1409,7 @@ void EV_FireRpg( event_args_t *args )
 		gEngfuncs.pEventAPI->EV_WeaponAnimation( RPG_FIRE2, 1 );
 	
 		V_PunchAxis( 0, -5.0 );
+
 	}
 }
 //======================

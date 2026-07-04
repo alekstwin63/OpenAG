@@ -20,6 +20,8 @@
 
 #include "hud.h"
 #include "cl_util.h"
+#include "damage_numbers.h"
+#include "auto_join.h"
 #include <ctime>
 #include <string.h>
 #include <stdio.h>
@@ -34,6 +36,7 @@
 
 #include "forcemodel.h"
 #include "steam_id.h"
+#include "item_timers.h"
 
 hud_player_info_t	 g_PlayerInfoList[MAX_PLAYERS+1];	   // player info from the engine
 extra_player_info_t  g_PlayerExtraInfo[MAX_PLAYERS+1];   // additional player info sent directly to the client dll
@@ -211,6 +214,12 @@ void __CmdFunc_OpenCommandMenu(void)
 	}
 }
 
+cvar_t* cl_forceteammate_enable = nullptr;
+cvar_t* cl_forceenemy_enable = nullptr;
+cvar_t* cl_explosions_enable = nullptr;
+cvar_t* cl_footstep_volume = nullptr;
+cvar_t* cl_discord_rpc = nullptr;
+
 // TFC "special" command
 void __CmdFunc_InputPlayerSpecial(void)
 {
@@ -242,6 +251,32 @@ void __CmdFunc_ToggleServerBrowser( void )
 	{
 		gViewPort->ToggleServerBrowser();
 	}
+}
+
+void __CmdFunc_ToggleCrosshairEditor( void )
+{
+	if ( gViewPort )
+	{
+		gViewPort->ShowVGUIMenu( MENU_CROSSHAIR );
+	}
+}
+
+void __CmdFunc_ToggleAGSettings( void )
+{
+	if ( gViewPort )
+	{
+		gViewPort->ShowVGUIMenu( MENU_AGSETTINGS );
+	}
+}
+
+void __CmdFunc_AutoJoin( void )
+{
+	auto_join::start();
+}
+
+void __CmdFunc_AutoJoinCancel( void )
+{
+	auto_join::cancel();
 }
 
 void __CmdFunc_Agrecord()
@@ -468,6 +503,19 @@ void CHud :: Init( void )
 	HOOK_COMMAND( "ForceCloseCommandMenu", ForceCloseCommandMenu );
 	HOOK_COMMAND( "special", InputPlayerSpecial );
 	HOOK_COMMAND( "togglebrowser", ToggleServerBrowser );
+	HOOK_COMMAND( "crosshair_editor", ToggleCrosshairEditor );
+	HOOK_COMMAND( "ag_settings", ToggleAGSettings );
+	HOOK_COMMAND( "autojoin", AutoJoin );
+	HOOK_COMMAND( "autojoin_cancel", AutoJoinCancel );
+
+	cl_forceteammate_enable = CVAR_CREATE( "cl_forceteammate_enable", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
+	cl_forceenemy_enable = CVAR_CREATE( "cl_forceenemy_enable", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
+	cl_explosions_enable = CVAR_CREATE( "cl_explosions_enable", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
+	cl_footstep_volume = CVAR_CREATE( "cl_footstep_volume", "1.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
+	cl_discord_rpc = CVAR_CREATE( "cl_discord_rpc", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
+	item_timers::init();
+	damage_numbers::init();
+	auto_join::init();
 
 	HOOK_COMMAND( "agrecord", Agrecord );
 	HOOK_COMMAND( "append", Append );

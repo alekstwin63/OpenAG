@@ -2,6 +2,8 @@
 #include "cl_util.h"
 #include "parsemsg.h"
 
+int g_PlayerArmor[MAX_PLAYERS_ARMOR] = {0};
+
 DECLARE_MESSAGE(m_PlayerId, PlayerId);
 
 int CHudPlayerId::Init()
@@ -72,6 +74,9 @@ int CHudPlayerId::MsgFunc_PlayerId(const char* name, int size, void* buf)
 	teammate = (READ_BYTE() == 1);
 	health = READ_SHORT();
 	armor = READ_SHORT();
+
+	if (player_id >= 0 && player_id < MAX_PLAYERS_ARMOR)
+		g_PlayerArmor[player_id] = armor;
 
 	draw_until = gHUD.m_flTime + 2.0f;
 

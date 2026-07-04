@@ -1,0 +1,1 @@
+ -lopengl32 -lws2_32 /home/angel/OpenAG/lib/stubs/libsdl2_stub.a /home/angel/OpenAG/lib/stubs/libcurl_stub.a "external/discord-rpc/src/libdiscord-rpc.a" -lpsapi -ladvapi32 -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 

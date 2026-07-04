@@ -187,6 +187,7 @@ int gmsgTeamNames = 0;
 
 int gmsgStatusText = 0;
 int gmsgStatusValue = 0; 
+int gmsgDamageDealt = 0;
 
 
 
@@ -235,7 +236,8 @@ void LinkUserMessages( void )
 
 	gmsgStatusText = REG_USER_MSG("StatusText", -1);
 	gmsgStatusValue = REG_USER_MSG("StatusValue", 3); 
-
+	gmsgDamageDealt = REG_USER_MSG("DmgDealt", -1);
+	ALERT(at_console, "[DmgDealt] Registered message ID: %d\n", gmsgDamageDealt);
 }
 
 LINK_ENTITY_TO_CLASS( player, CBasePlayer );
@@ -442,6 +444,8 @@ void CBasePlayer :: TraceAttack( entvars_t *pevAttacker, float flDamage, Vector 
 
 int CBasePlayer :: TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker, float flDamage, int bitsDamageType )
 {
+
+
 	// have suit diagnose the problem - ie: report damage type
 	int bitsDamage = bitsDamageType;
 	int ffound = TRUE;
@@ -452,6 +456,7 @@ int CBasePlayer :: TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker, 
 	float flRatio;
 	float flBonus;
 	float flHealthPrev = pev->health;
+	float flArmorPrev = pev->armorvalue;
 
 	flBonus = ARMOR_BONUS;
 	flRatio = ARMOR_RATIO;
@@ -668,6 +673,32 @@ int CBasePlayer :: TakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker, 
 			else
 				SetSuitUpdate("!HEV_HLTH1", FALSE, SUIT_NEXT_IN_10MIN);	// health dropping
 		}
+
+	if (fTookDamage)
+	{
+		CBaseEntity *pAttacker = CBaseEntity::Instance(pevAttacker);
+		if (pAttacker && pAttacker->IsPlayer() && pAttacker != this)
+		{
+			float flHealthLost = flHealthPrev - pev->health;
+			if (pev->health < 0) flHealthLost = flHealthPrev;
+			float flArmorLost = flArmorPrev - pev->armorvalue;
+			if (pev->armorvalue < 0) flArmorLost = flArmorPrev;
+			float flTotalDamage = flHealthLost + flArmorLost;
+			if (flTotalDamage > 0)
+			{
+				bool isHeadshot = (m_LastHitGroup == HITGROUP_HEAD);
+				MESSAGE_BEGIN(MSG_ONE, gmsgDamageDealt, NULL, pAttacker->edict());
+
+					WRITE_COORD(pev->origin.x + pev->view_ofs.x);
+					WRITE_COORD(pev->origin.y + pev->view_ofs.y);
+					WRITE_COORD(pev->origin.z + pev->view_ofs.z);
+					WRITE_SHORT((int)flTotalDamage);
+					WRITE_BYTE(isHeadshot ? 1 : 0);
+				MESSAGE_END();
+			}
+		}
+		m_LastHitGroup = HITGROUP_GENERIC;
+	}
 
 	return fTookDamage;
 }
@@ -2331,7 +2362,7 @@ void CBasePlayer::CheckSuitUpdate()
 // seconds, then we won't repeat playback of this word or sentence
 // for at least that number of seconds.
 
-void CBasePlayer::SetSuitUpdate(char *name, int fgroup, int iNoRepeatTime)
+void CBasePlayer::SetSuitUpdate(const char *name, int fgroup, int iNoRepeatTime)
 {
 	int i;
 	int isentence;
@@ -3784,7 +3815,7 @@ int CBasePlayer::RemovePlayerItem( CBasePlayerItem *pItem )
 //
 // Returns the unique ID for the ammo, or -1 if error
 //
-int CBasePlayer :: GiveAmmo( int iCount, char *szName, int iMax )
+int CBasePlayer :: GiveAmmo( int iCount, const char *szName, int iMax )
 {
 	if ( !szName )
 	{

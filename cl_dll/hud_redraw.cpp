@@ -19,7 +19,8 @@
 #include "hud.h"
 #include "cl_util.h"
 #include "bench.h"
-
+#include "item_timers.h"
+#include "damage_numbers.h"
 #include "vgui_TeamFortressViewport.h"
 
 #define MAX_LOGO_FRAMES 56
@@ -263,6 +264,9 @@ int CHud :: Redraw( float flTime, int intermission )
 		SPR_DrawAdditive( 0, mx, my, NULL );
 	}
 	*/
+
+	item_timers::update_and_draw();
+	damage_numbers::update_and_draw();
 
 	return 1;
 }

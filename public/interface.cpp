@@ -255,7 +255,7 @@ CreateInterfaceFn Sys_GetFactoryThis( void )
 CreateInterfaceFn Sys_GetFactory( const char *pModuleName )
 {
 #if defined ( _WIN32 )
-	return static_cast<CreateInterfaceFn>( Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
+	return reinterpret_cast<CreateInterfaceFn>( Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
 #else
 // Linux gives this error:
 //../public/interface.cpp: In function `IBaseInterface *(*Sys_GetFactory 

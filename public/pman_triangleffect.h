@@ -46,7 +46,11 @@ public:
 		// Requested size should match size of class.
         if ( size != sizeof( CCoreTriangleEffect ) )
 #ifdef _WIN32
+#if defined(__GNUC__)
+			return NULL; // MinGW cross-build: exceptions disabled
+#else
              throw "Error in requested size of new particle class instance.";
+#endif
 #else
 			return NULL;
 #endif
@@ -196,7 +200,9 @@ protected:
         if (size > (unsigned long) CMiniMem::Instance()->MaxBlockSize())
 		{
 #ifdef _WIN32
+#if !defined(__GNUC__)
             throw "New particle class is larger than memory pool max size, update lMaxParticleClassSize() function.";
+#endif
 #endif
 			return(false);
 		}

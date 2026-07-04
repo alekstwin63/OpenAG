@@ -1,0 +1,2 @@
+/usr/bin/i686-w64-mingw32-ar qc libdiscord-rpc.a "CMakeFiles/discord-rpc.dir/discord_rpc.cpp.obj" "CMakeFiles/discord-rpc.dir/rpc_connection.cpp.obj" "CMakeFiles/discord-rpc.dir/serialization.cpp.obj" "CMakeFiles/discord-rpc.dir/connection_win.cpp.obj" "CMakeFiles/discord-rpc.dir/discord_register_win.cpp.obj"
+/usr/bin/i686-w64-mingw32-ranlib libdiscord-rpc.a

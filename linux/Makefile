@@ -31,7 +31,7 @@ ELF-GC-DYNSTR=./elf-gc-dynstr
 ifeq ($(OS),Linux)
 	CC="clang -m32"
 	CPLUS="clang++ -m32 -std=c++14"
-	CPP_LIB:=-L$(shell g++ -m32 -print-file-name=libstdc++.a | xargs dirname) -l:libstdc++.a -ldl -lpthread
+	CPP_LIB:=-L/home/angel/OpenAG/lib32 -L$(shell g++ -m32 -print-file-name=libstdc++.a | xargs dirname) -l:libstdc++.a -ldl -lpthread
 endif
 
 ifeq ($(OS),Darwin)

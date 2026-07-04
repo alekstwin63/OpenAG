@@ -38,8 +38,9 @@
 #define MENU_INTRO 					5
 #define MENU_CLASSHELP				6
 #define MENU_CLASSHELP2 			7
-#define MENU_REPEATHELP 			8
 #define MENU_SPECHELP				9
+#define MENU_CROSSHAIR				10
+#define MENU_AGSETTINGS				11
 #endif
 using namespace vgui;
 
@@ -57,6 +58,8 @@ class DragNDropPanel;
 class CTransparentPanel;
 class CClassMenuPanel;
 class CTeamMenuPanel;
+class CCrosshairMenuPanel;
+class CAGSettingsPanel;
 class TeamFortressViewport;
 
 char* GetVGUITGAName(const char *pszName);
@@ -512,6 +515,8 @@ private:
 	CMenuPanel*	 ShowTeamMenu( void );
 	void		 CreateClassMenu( void );
 	CMenuPanel*	 ShowClassMenu( void );
+	CMenuPanel*  ShowCrosshairMenu( void );
+	CMenuPanel*  ShowAGSettingsMenu( void );
 	void		 CreateSpectatorMenu( void );
 	
 	// Scheme handler
@@ -641,6 +646,8 @@ public:
 	CClassMenuPanel	*m_pClassMenu;
 	ScorePanel		*m_pScoreBoard;
 	SpectatorPanel *		m_pSpectatorPanel;
+	CCrosshairMenuPanel	*m_pCrosshairMenu;
+	CAGSettingsPanel	*m_pAGSettingsMenu;
 	char			m_szServerName[ MAX_SERVERNAME_LENGTH ];
 };
 

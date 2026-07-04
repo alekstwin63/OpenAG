@@ -118,6 +118,16 @@ add_sources(
 	vgui_ControlConfigPanel.cpp
 	vgui_ControlConfigPanel.h
 	vgui_CustomObjects.cpp
+	vgui_CrosshairMenu.cpp
+	vgui_CrosshairMenu.h
+	vgui_AGSettingsMenu.cpp
+	vgui_AGSettingsMenu.h
+	item_timers.cpp
+	item_timers.h
+	auto_join.cpp
+	auto_join.h
+	damage_numbers.cpp
+	damage_numbers.h
 	vgui_int.cpp
 	vgui_int.h
 	vgui_MOTDWindow.cpp

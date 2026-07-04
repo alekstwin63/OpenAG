@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2002, Valve LLC, All rights reserved. ============
+//========= Copyright ï¿½ 1996-2002, Valve LLC, All rights reserved. ============
 //
 // Purpose: 
 //
@@ -10,6 +10,7 @@
 #include "cl_util.h"
 #include "hud_servers_priv.h"
 #include "hud_servers.h"
+#include "auto_join.h"
 #include "net_api.h"
 #include <string.h>
 #ifdef _WIN32
@@ -199,6 +200,8 @@ void CHudServers::ServerResponse( struct net_response_s *response )
 			NET_API->SetValueForKey( browser->info, "ping", sz, len );
 			
 			AddServer( &m_pServers, browser );
+
+			auto_join::on_server_response( response->context, browser->info, browser->ping );
 		}
 		break;
 	default:

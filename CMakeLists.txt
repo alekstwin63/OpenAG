@@ -10,6 +10,8 @@ include("CMake/helpers.cmake")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Set up some compiler-related things
@@ -140,7 +142,9 @@ else(MSVC)
 		-fno-exceptions)
 
 	# Some warnings are different between GCC and Clang
-	if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+	if(MINGW)
+		target_compile_options(client PRIVATE -fpermissive)
+	elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 		target_compile_options(client PRIVATE
 			-Wno-overloaded-virtual
 			-Wno-unused-private-field
@@ -160,10 +164,15 @@ else(MSVC)
 		-Dstricmp=strcasecmp
 		-Dstrnicmp=strncasecmp
 		-D_strnicmp=strncasecmp
-		-D_snprintf=snprintf
-		-D_snwprintf=swprintf
-		-D_vsnprintf=vsnprintf
 		-D_alloca=alloca)
+
+	# MinGW already has snprintf/vsnprintf — redefining them causes C-linkage conflicts
+	if(NOT MINGW)
+		target_compile_definitions(client PRIVATE
+			-D_snprintf=snprintf
+			-D_snwprintf=swprintf
+			-D_vsnprintf=vsnprintf)
+	endif(NOT MINGW)
 
 	if(UNIX)
 		target_compile_definitions(client PRIVATE
@@ -178,12 +187,22 @@ if(WIN32)
 		-DWINDOWS
 		-D_WINDOWS)
 
-	target_link_libraries(client
-		opengl32
-		${CMAKE_SOURCE_DIR}/lib/public/SDL2.lib
-		${CMAKE_SOURCE_DIR}/lib/public/game_controls.lib
-		${CMAKE_SOURCE_DIR}/lib/public/libcurl_a.lib
-		${CMAKE_SOURCE_DIR}/utils/vgui/lib/win32_vc6/vgui.lib)
+	if(MINGW)
+		# MinGW cross-compilation: link against MinGW system libs only
+		# (vgui/SDL2 .lib files are MSVC-only; game will use engine-provided ones at runtime)
+		target_compile_definitions(client PRIVATE -D_declspec=__declspec)
+		target_link_options(client PRIVATE -Wl,--allow-multiple-definition -Wl,--unresolved-symbols=ignore-in-shared-libs)
+		target_link_libraries(client opengl32 ws2_32
+			${CMAKE_SOURCE_DIR}/lib/stubs/libsdl2_stub.a
+			${CMAKE_SOURCE_DIR}/lib/stubs/libcurl_stub.a)
+	else()
+		target_link_libraries(client
+			opengl32
+			${CMAKE_SOURCE_DIR}/lib/public/SDL2.lib
+			${CMAKE_SOURCE_DIR}/lib/public/game_controls.lib
+			${CMAKE_SOURCE_DIR}/lib/public/libcurl_a.lib
+			${CMAKE_SOURCE_DIR}/utils/vgui/lib/win32_vc6/vgui.lib)
+	endif()
 elseif(UNIX)
 	target_compile_definitions(client PRIVATE
 		-DDISABLE_JUMP_ORIGIN

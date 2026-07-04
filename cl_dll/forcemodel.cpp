@@ -504,17 +504,27 @@ namespace force_model
 			std::string model_name(CVAR_GET_STRING("model"));
 			std::transform(model_name.begin(), model_name.end(), model_name.begin(), ::tolower);
 
+			cvar_t* pForceTeammate = gEngfuncs.pfnGetCvarPointer("cl_forceteammate_enable");
+			cvar_t* pForceEnemy = gEngfuncs.pfnGetCvarPointer("cl_forceenemy_enable");
+			bool force_teammate = pForceTeammate ? (pForceTeammate->value != 0.0f) : true;
+			bool force_enemy = pForceEnemy ? (pForceEnemy->value != 0.0f) : true;
+
 			if (!strcmp(model_name.c_str(), g_PlayerExtraInfo[player_index + 1].teamname))
-				teammate_enemy_model_overrides_cache[player_index] = teammate_model_override;
+				teammate_enemy_model_overrides_cache[player_index] = force_teammate ? teammate_model_override : nullptr;
 			else
-				teammate_enemy_model_overrides_cache[player_index] = enemy_model_override;
+				teammate_enemy_model_overrides_cache[player_index] = force_enemy ? enemy_model_override : nullptr;
 			return;
 		}
 
+		cvar_t* pForceTeammate = gEngfuncs.pfnGetCvarPointer("cl_forceteammate_enable");
+		cvar_t* pForceEnemy = gEngfuncs.pfnGetCvarPointer("cl_forceenemy_enable");
+		bool force_teammate = pForceTeammate ? (pForceTeammate->value != 0.0f) : true;
+		bool force_enemy = pForceEnemy ? (pForceEnemy->value != 0.0f) : true;
+
 		if (!strcmp(g_PlayerExtraInfo[local_player_index].teamname, g_PlayerExtraInfo[player_index + 1].teamname))
-			teammate_enemy_model_overrides_cache[player_index] = teammate_model_override;
+			teammate_enemy_model_overrides_cache[player_index] = force_teammate ? teammate_model_override : nullptr;
 		else
-			teammate_enemy_model_overrides_cache[player_index] = enemy_model_override;
+			teammate_enemy_model_overrides_cache[player_index] = force_enemy ? enemy_model_override : nullptr;
 	}
 
 	void update_player_teams()

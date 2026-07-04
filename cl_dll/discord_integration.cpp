@@ -321,10 +321,22 @@ namespace discord_integration
 					update_presence();
 			}
 
+			inline void make_dirty()
+			{
+				dirty = true;
+			}
+
 		protected:
 			void update_presence()
 			{
 				dirty = false;
+
+				cvar_t* pDiscordRpc = gEngfuncs.pfnGetCvarPointer("cl_discord_rpc");
+				if (pDiscordRpc && pDiscordRpc->value == 0.0f)
+				{
+					Discord_ClearPresence();
+					return;
+				}
 
 				DiscordRichPresence presence{};
 
@@ -503,6 +515,19 @@ namespace discord_integration
 
 	void on_frame()
 	{
+		static int last_discord_rpc_val = -1;
+		cvar_t* pDiscordRpc = gEngfuncs.pfnGetCvarPointer("cl_discord_rpc");
+		if (pDiscordRpc)
+		{
+			int cur_val = (int)pDiscordRpc->value;
+			if (cur_val != last_discord_rpc_val)
+			{
+				last_discord_rpc_val = cur_val;
+				if (discord_state)
+					discord_state->make_dirty();
+			}
+		}
+
 		// Check if we're still in-game.
 		if (!updated_client_data)
 			discord_state->set_game_state(game_state::NOT_PLAYING);

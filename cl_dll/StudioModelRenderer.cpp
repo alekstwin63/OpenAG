@@ -2,7 +2,7 @@
 // routines for setting up to draw 3DStudio models
 #ifdef _WIN32
 #include <winsani_in.h>
-#include <Windows.h>
+#include <windows.h>
 #include <winsani_out.h>
 #endif
 
