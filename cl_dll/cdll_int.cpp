@@ -20,6 +20,7 @@
 
 #include "hud.h"
 #include "cl_util.h"
+#include "imgui_helper.h"
 #include "pm_defs.h"
 #include "netadr.h"
 #undef INTERFACE_H
@@ -228,6 +229,8 @@ int CL_DLLEXPORT HUD_VidInit( void )
 
 	gHUD.white_sprite = gEngfuncs.pfnSPR_Load("sprites/white.spr");
 
+	ImGuiHelper_VidInit();
+
 	return 1;
 }
 
@@ -247,6 +250,7 @@ void CL_DLLEXPORT HUD_Init( void )
 	InitInput();
 	gHUD.Init();
 	Scheme_Init();
+	ImGuiHelper_Init();
 }
 
 
@@ -264,6 +268,8 @@ int CL_DLLEXPORT HUD_Redraw( float time, int intermission )
 //	RecClHudRedraw(time, intermission);
 
 	gHUD.Redraw( time, intermission );
+
+	ImGuiHelper_Draw();
 
 	return 1;
 }
@@ -319,6 +325,50 @@ Called by engine every frame that client .dll is loaded
 void CL_DLLEXPORT HUD_Frame( double time )
 {
 //	RecClHudFrame(time);
+
+	static bool lastGameUIVisible = false;
+	bool gameUIVisible = (g_pGameUI && g_pGameUI->IsGameUIVisible() != 0);
+	bool customMenuEnabled = cl_custom_menu ? (cl_custom_menu->value != 0.0f) : true;
+
+	static bool startupMenuHidden = false;
+	static const char* lastMapName = nullptr;
+	const char* currentMap = gEngfuncs.pfnGetLevelName();
+	if (currentMap != lastMapName)
+	{
+		startupMenuHidden = false;
+		lastMapName = currentMap;
+	}
+
+	if (customMenuEnabled && gameUIVisible)
+	{
+		if (g_IsBackgroundMap)
+		{
+			if (!startupMenuHidden)
+			{
+				gEngfuncs.pfnClientCmd("gameui_hide\n");
+			}
+		}
+		else if (!lastGameUIVisible)
+		{
+			gEngfuncs.pfnClientCmd("gameui_hide\n");
+			if (g_ShowImGuiMenu || g_ShowCrosshairEditor || g_ShowAGSettings)
+			{
+				g_ShowImGuiMenu = false;
+				g_ShowCrosshairEditor = false;
+				g_ShowAGSettings = false;
+			}
+			else
+			{
+				g_ShowPauseMenu = !g_ShowPauseMenu;
+			}
+			ImGuiHelper_UpdateInputState();
+		}
+	}
+	else if (g_IsBackgroundMap && !gameUIVisible)
+	{
+		startupMenuHidden = true;
+	}
+	lastGameUIVisible = gameUIVisible;
 
 	ServersThink( time );
 

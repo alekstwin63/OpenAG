@@ -118,10 +118,6 @@ add_sources(
 	vgui_ControlConfigPanel.cpp
 	vgui_ControlConfigPanel.h
 	vgui_CustomObjects.cpp
-	vgui_CrosshairMenu.cpp
-	vgui_CrosshairMenu.h
-	vgui_AGSettingsMenu.cpp
-	vgui_AGSettingsMenu.h
 	item_timers.cpp
 	item_timers.h
 	auto_join.cpp
@@ -146,4 +142,13 @@ add_sources(
 	view.cpp
 	view.h
 	voice_status.cpp
-	wrect.h)
+	wrect.h
+	imgui_helper.cpp
+	imgui_helper.h
+	../external/imgui/imgui.cpp
+	../external/imgui/imgui_draw.cpp
+	../external/imgui/imgui_widgets.cpp
+	../external/imgui/imgui_tables.cpp
+	../external/imgui/imgui_demo.cpp
+	../external/imgui/backends/imgui_impl_sdl2.cpp
+	../external/imgui/backends/imgui_impl_opengl2.cpp)

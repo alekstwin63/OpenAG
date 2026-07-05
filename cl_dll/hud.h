@@ -151,6 +151,8 @@ public:
 	void _cdecl UserCmd_NextWeapon( void );
 	void _cdecl UserCmd_PrevWeapon( void );
 
+	struct WEAPON* GetActiveWeapon() const { return m_pWeapon; }
+
 private:
 	float m_fFade;
 	RGBA  m_rgba;
@@ -387,6 +389,7 @@ public:
 	int VidInit( void );
 	int Draw(float flTime);
 	int MsgFunc_Battery(const char *pszName,  int iSize, void *pbuf );
+	int GetBattery() const { return m_iBat; }
 	
 private:
 	HSPRITE m_hSprite1;

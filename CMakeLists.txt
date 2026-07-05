@@ -103,6 +103,9 @@ target_include_directories(client PRIVATE
 	dlls
 	engine
 	external
+	external/imgui
+	external/imgui/backends
+	external/SDL2
 	external/discord-rpc/include
 	game_shared
 	pm_shared

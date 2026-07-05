@@ -8,11 +8,14 @@
 // hud_servers.cpp
 #include "hud.h"
 #include "cl_util.h"
+#include "steam_matchmaking.h"
 #include "hud_servers_priv.h"
 #include "hud_servers.h"
 #include "auto_join.h"
 #include "net_api.h"
 #include <string.h>
+#include <string>
+#include <dlfcn.h>
 #ifdef _WIN32
 #include "winsani_in.h"
 #include <winsock.h>
@@ -24,8 +27,8 @@
 static int	context_id;
 
 // Default master server address in case we can't read any from valvecomm.lst file
-#define VALVE_MASTER_ADDRESS "half-life.east.won.net"
-#define PORT_MASTER	 27010
+#define VALVE_MASTER_ADDRESS "hl1master.steampowered.com"
+#define PORT_MASTER	 27011
 #define PORT_SERVER  27015
 
 // File where we really should look for master servers
@@ -35,7 +38,10 @@ static int	context_id;
 
 #define NET_API gEngfuncs.pNetAPI
 
-static CHudServers *g_pServers = NULL;
+CHudServers *g_pServers = NULL;
+
+typedef void (*SteamAPI_RunCallbacks_t)(void);
+static SteamAPI_RunCallbacks_t pfnSteamAPI_RunCallbacks = nullptr;
 
 /*
 ===================
@@ -384,6 +390,11 @@ Think
 */
 void CHudServers::Think( double time )
 {
+	if ( pfnSteamAPI_RunCallbacks )
+	{
+		pfnSteamAPI_RunCallbacks();
+	}
+
 	m_fElapsed += time;
 
 	if ( !m_nRequesting )
@@ -859,7 +870,7 @@ int CHudServers::LoadMasterAddresses( int maxservers, int *count, netadr_t *padr
 finish_master:
 	if ( !nCount )
 	{
-		sprintf( szMaster, VALVE_MASTER_ADDRESS );    // IP:PORT string
+		sprintf( szMaster, "%s:%d", VALVE_MASTER_ADDRESS, PORT_MASTER );    // IP:PORT string
 
 		// Convert to netadr_t
 		if ( NET_API->StringToAdr ( szMaster, &adr ) )
@@ -878,6 +889,159 @@ finish_master:
 
 	return ( nCount > 0 ) ? 1 : 0;
 }
+struct MatchMakingKeyValuePair_t
+{
+	char m_szKey[256];
+	char m_szValue[256];
+};
+
+class CSteamMatchmakingResponse : public ISteamMatchmakingServerListResponse
+{
+private:
+	CHudServers* m_pOwner;
+	ISteamMatchmakingServers* m_pMatchmakingServers;
+	void* m_hRequest;
+
+public:
+	CSteamMatchmakingResponse(CHudServers* pOwner, ISteamMatchmakingServers* pMatchmakingServers)
+		: m_pOwner(pOwner), m_pMatchmakingServers(pMatchmakingServers), m_hRequest(nullptr) {}
+
+	void SetRequest(void* hRequest) { m_hRequest = hRequest; }
+	void* GetRequest() { return m_hRequest; }
+
+	virtual void ServerResponded(void *hRequest, int iServer) override
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: ServerResponded index=%d\n", iServer);
+		if (!m_pMatchmakingServers || !m_hRequest)
+			return;
+
+		gameserveritem_t* pDetails = m_pMatchmakingServers->GetServerDetails(m_hRequest, iServer);
+		if (pDetails)
+		{
+			gEngfuncs.Con_Printf("SteamMatchmaking: Server %s (%s) responded, ping=%d\n", pDetails->m_szServerName, pDetails->m_szMap, pDetails->m_nPing);
+			m_pOwner->AddSteamServer(pDetails);
+		}
+	}
+
+	virtual void ServerFailedToRespond(void *hRequest, int iServer) override {}
+	virtual void RefreshComplete(void *hRequest, int response) override
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: RefreshComplete callback: response=%d Total servers=%d\n", 
+			response, m_pMatchmakingServers ? m_pMatchmakingServers->GetServerCount(m_hRequest) : 0);
+	}
+};
+
+static ISteamMatchmakingServers* GetSteamMatchmakingServers()
+{
+	const char* paths[] = {
+		"libsteam_api.so",
+		"./libsteam_api.so",
+		"../libsteam_api.so"
+	};
+
+	void* handle = nullptr;
+
+	// 1. Try to find the already loaded libsteam_api.so in memory (RTLD_NOLOAD)
+	// to reuse the engine's initialized Steamworks context.
+	for (const char* path : paths)
+	{
+		handle = dlopen(path, RTLD_NOW | RTLD_NOLOAD);
+		if (handle)
+		{
+			gEngfuncs.Con_Printf("SteamMatchmaking: Reusing resident memory instance of %s via RTLD_NOLOAD\n", path);
+			break;
+		}
+	}
+
+	// 2. If it was not found resident, fall back to loading it normally
+	if (!handle)
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: Resident instance not found, loading fresh...\n");
+		for (const char* path : paths)
+		{
+			gEngfuncs.Con_Printf("SteamMatchmaking: Trying to load %s...\n", path);
+			handle = dlopen(path, RTLD_NOW);
+			if (handle)
+			{
+				gEngfuncs.Con_Printf("SteamMatchmaking: Successfully loaded %s\n", path);
+				break;
+			}
+			else
+			{
+				gEngfuncs.Con_Printf("SteamMatchmaking: Failed to load %s, error: %s\n", path, dlerror());
+			}
+		}
+	}
+
+	if (!handle)
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: Failed to get handle for steam_api\n");
+		return nullptr;
+	}
+
+	// Also resolve SteamAPI_RunCallbacks if not already resolved
+	if (!pfnSteamAPI_RunCallbacks)
+	{
+		pfnSteamAPI_RunCallbacks = (SteamAPI_RunCallbacks_t)dlsym(handle, "SteamAPI_RunCallbacks");
+		if (pfnSteamAPI_RunCallbacks)
+		{
+			gEngfuncs.Con_Printf("SteamMatchmaking: Successfully resolved SteamAPI_RunCallbacks\n");
+		}
+		else
+		{
+			gEngfuncs.Con_Printf("SteamMatchmaking: Failed to resolve SteamAPI_RunCallbacks\n");
+		}
+	}
+
+	SteamMatchmakingServers_t pfnSteamMatchmakingServers = (SteamMatchmakingServers_t)dlsym(handle, "SteamMatchmakingServers");
+	if (!pfnSteamMatchmakingServers)
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: Failed to find SteamMatchmakingServers export\n");
+		return nullptr;
+	}
+
+	ISteamMatchmakingServers* pServers = pfnSteamMatchmakingServers();
+	if (!pServers)
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: SteamMatchmakingServers() returned nullptr\n");
+	}
+	return pServers;
+}static CSteamMatchmakingResponse* g_pInternetResponse = nullptr;
+static void* g_hSteamInternetQuery = nullptr;
+
+static CSteamMatchmakingResponse* g_pLANResponse = nullptr;
+static void* g_hSteamLANQuery = nullptr;
+
+void CHudServers::AddSteamServer( gameserveritem_t *pDetails )
+{
+	netadr_t adr;
+	memset( &adr, 0, sizeof( adr ) );
+	adr.type = NA_IP;
+	memcpy( adr.ip, &pDetails->m_NetAdr.m_unIP, 4 );
+	adr.port = htons(pDetails->m_NetAdr.m_usConnectionPort);
+
+	// Construct the info string
+	char szInfo[1024];
+	snprintf(szInfo, sizeof(szInfo),
+		"\\address\\%s\\hostname\\%s\\map\\%s\\current\\%d\\max\\%d\\ping\\%d",
+		gEngfuncs.pNetAPI->AdrToString( &adr ),
+		pDetails->m_szServerName[0] ? pDetails->m_szServerName : "Unnamed AG Server",
+		pDetails->m_szMap[0] ? pDetails->m_szMap : "unknown",
+		pDetails->m_nPlayers,
+		pDetails->m_nMaxPlayers,
+		pDetails->m_nPing
+	);
+
+	// Add to browser servers list
+	server_t *browser = new server_t;
+	browser->remote_address = adr;
+	browser->info = new char[ strlen(szInfo) + 1 ];
+	strcpy( browser->info, szInfo );
+	browser->ping = pDetails->m_nPing;
+
+	AddServer( &m_pServers, browser );
+	m_nServerCount++;
+}
 
 /*
 ===================
@@ -888,43 +1052,56 @@ Request list of game servers from master
 */
 void CHudServers::RequestList( void )
 {
-	m_nRequesting	= 1;
-	m_nDone			= 0;
-	m_dStarted		= m_fElapsed;
-
-	int	count = 0;
-	netadr_t adr;
-
-	if ( !LoadMasterAddresses( 1, &count, &adr ) )
-	{
-		gEngfuncs.Con_DPrintf( "SendRequest:  Unable to read master server addresses\n" );
-		return;
-	}
+	m_nRequesting   = 1;
+	m_nDone                 = 0;
+	m_dStarted              = m_fElapsed;
 
 	ClearRequestList( &m_pActiveList );
 	ClearRequestList( &m_pServerList );
 	ClearServerList( &m_pServers );
-
 	m_nServerCount = 0;
 
-	// Make sure networking system has started.
-	NET_API->InitNetworking();
+	ISteamMatchmakingServers* pMatchmakingServers = GetSteamMatchmakingServers();
+	if (!pMatchmakingServers)
+	{
+		gEngfuncs.Con_Printf("SteamMatchmaking: Failed to load ISteamMatchmakingServers\n");
+		return;
+	}
 
-	// Kill off left overs if any
-	NET_API->CancelAllRequests();
+	if (g_hSteamInternetQuery)
+	{
+		pMatchmakingServers->CancelQuery(g_hSteamInternetQuery);
+		g_hSteamInternetQuery = nullptr;
+	}
 
-	// Request Server List from master
-	NET_API->SendRequest( context_id++, NETAPI_REQUEST_SERVERLIST, 0, 5.0, &adr, ::ListResponse );
+	if (!g_pInternetResponse)
+	{
+		g_pInternetResponse = new CSteamMatchmakingResponse(this, pMatchmakingServers);
+	}
+
+	int appId = 70; // Half-Life 1 AppID
+	gEngfuncs.Con_Printf("SteamMatchmaking: Requesting Internet Servers for AppID=%d...\n", appId);
+
+	MatchMakingKeyValuePair_t filters[1];
+	strcpy(filters[0].m_szKey, "gamedir");
+	strcpy(filters[0].m_szValue, "ag");
+	MatchMakingKeyValuePair_t* pFilters[1] = { &filters[0] };
+
+	g_hSteamInternetQuery = pMatchmakingServers->RequestInternetServerList(
+		appId,
+		(void**)pFilters,
+		1,
+		g_pInternetResponse
+	);
+	gEngfuncs.Con_Printf("SteamMatchmaking: Internet Query handle = %p\n", g_hSteamInternetQuery);
+	g_pInternetResponse->SetRequest(g_hSteamInternetQuery);
 }
 
 void CHudServers::RequestBroadcastList( int clearpending )
 {
-	m_nRequesting	= 1;
-	m_nDone			= 0;
-	m_dStarted		= m_fElapsed;
-
-	netadr_t		adr;
-	memset( &adr, 0, sizeof( adr ) );
+	m_nRequesting   = 1;
+	m_nDone                 = 0;
+	m_dStarted              = m_fElapsed;
 
 	if ( clearpending )
 	{
@@ -935,27 +1112,37 @@ void CHudServers::RequestBroadcastList( int clearpending )
 		m_nServerCount = 0;
 	}
 
-	// Make sure to byte swap server if necessary ( using "host" to "net" conversion
-	adr.port = htons( PORT_SERVER );
-
-	// Make sure networking system has started.
-	NET_API->InitNetworking();
-
-	if ( clearpending )
+	ISteamMatchmakingServers* pMatchmakingServers = GetSteamMatchmakingServers();
+	if (!pMatchmakingServers)
 	{
-		// Kill off left overs if any
-		NET_API->CancelAllRequests();
+		gEngfuncs.Con_Printf("SteamMatchmaking: Failed to load ISteamMatchmakingServers for LAN\n");
+		return;
 	}
 
-	adr.type = NA_BROADCAST;
+	if (g_hSteamLANQuery)
+	{
+		pMatchmakingServers->CancelQuery(g_hSteamLANQuery);
+		g_hSteamLANQuery = nullptr;
+	}
 
-	// Request Servers from LAN via IP
-	NET_API->SendRequest( context_id++, NETAPI_REQUEST_DETAILS, FNETAPI_MULTIPLE_RESPONSE, 5.0, &adr, ::ServerResponse );
+	if (!g_pLANResponse)
+	{
+		g_pLANResponse = new CSteamMatchmakingResponse(this, pMatchmakingServers);
+	}
 
-	adr.type = NA_BROADCAST_IPX;
+	int appId = 70;
+	if (gEngfuncs.pfnGetAppID)
+	{
+		appId = gEngfuncs.pfnGetAppID();
+	}
+	gEngfuncs.Con_Printf("SteamMatchmaking: Requesting LAN Servers for AppID=%d...\n", appId);
 
-	// Request Servers from LAN via IPX ( if supported )
-	NET_API->SendRequest( context_id++, NETAPI_REQUEST_DETAILS, FNETAPI_MULTIPLE_RESPONSE, 5.0, &adr, ::ServerResponse );
+	g_hSteamLANQuery = pMatchmakingServers->RequestLANServerList(
+		appId,
+		g_pLANResponse
+	);
+	gEngfuncs.Con_Printf("SteamMatchmaking: LAN Query handle = %p\n", g_hSteamLANQuery);
+	g_pLANResponse->SetRequest(g_hSteamLANQuery);
 }
 
 void CHudServers::ServerPing( int server )

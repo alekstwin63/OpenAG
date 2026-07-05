@@ -19,6 +19,7 @@
 //
 
 #include "hud.h"
+#include "imgui_helper.h"
 #include "cl_util.h"
 #include "damage_numbers.h"
 #include "auto_join.h"
@@ -253,20 +254,24 @@ void __CmdFunc_ToggleServerBrowser( void )
 	}
 }
 
-void __CmdFunc_ToggleCrosshairEditor( void )
+extern "C" void HUD_UpdateCursorState()
 {
 	if ( gViewPort )
 	{
-		gViewPort->ShowVGUIMenu( MENU_CROSSHAIR );
+		gViewPort->UpdateCursorState();
 	}
+}
+
+void __CmdFunc_ToggleCrosshairEditor( void )
+{
+	g_ShowCrosshairEditor = !g_ShowCrosshairEditor;
+	ImGuiHelper_UpdateInputState();
 }
 
 void __CmdFunc_ToggleAGSettings( void )
 {
-	if ( gViewPort )
-	{
-		gViewPort->ShowVGUIMenu( MENU_AGSETTINGS );
-	}
+	g_ShowAGSettings = !g_ShowAGSettings;
+	ImGuiHelper_UpdateInputState();
 }
 
 void __CmdFunc_AutoJoin( void )

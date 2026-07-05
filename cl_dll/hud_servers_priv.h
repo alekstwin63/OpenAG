@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2002, Valve LLC, All rights reserved. ============
+//========= Copyright Â© 1996-2002, Valve LLC, All rights reserved. ============
 //
 // Purpose: 
 //
@@ -40,6 +40,7 @@ public:
 
 	void	RequestList( void );
 	void	RequestBroadcastList( int clearpending );
+	void	AddSteamServer( struct gameserveritem_t *pDetails );
 
 	void	ServerPing( int server );
 	void	ServerRules( int server );
@@ -62,6 +63,8 @@ public:
 	char	*GetServerInfo( int server );
 	int		GetServerCount( void );
 	void	SortServers( const char *fieldname );
+	server_t *GetServersList( void ) { return m_pServers; }
+	int		IsRequesting( void ) { return m_nRequesting; }
 
 	void	ListResponse( struct net_response_s *response );
 	void	ServerResponse( struct net_response_s *response );

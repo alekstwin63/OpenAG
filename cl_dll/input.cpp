@@ -7,6 +7,7 @@
 #include "hud.h"
 #include "cl_util.h"
 #include "camera.h"
+#include "imgui_helper.h"
 extern "C"
 {
 #include "kbutton.h"
@@ -441,6 +442,9 @@ int CL_DLLEXPORT HUD_Key_Event( int down, int keynum, const char *pszCurrentBind
 {
 //	RecClKeyEvent(down, keynum, pszCurrentBinding);
 
+	if (!ImGuiHelper_HandleKey(down, keynum, pszCurrentBinding))
+		return 0;
+
 	if (gViewPort)
 		return gViewPort->KeyInput(down, keynum, pszCurrentBinding);
 	
@@ -845,6 +849,9 @@ void CL_DLLEXPORT CL_CreateMove ( float frametime, struct usercmd_s *cmd, int ac
 	}
 
 	Bench_SetViewAngles( 1, (float *)&cmd->viewangles, frametime, cmd );
+
+	extern unsigned int g_dwKeyPressButtons;
+	g_dwKeyPressButtons = cmd->buttons;
 }
 
 /*
@@ -1128,4 +1135,5 @@ void CL_DLLEXPORT HUD_Shutdown( void )
 	CL_UnloadGameUI();
 
 	discord_integration::shutdown();
+	ImGuiHelper_Shutdown();
 }

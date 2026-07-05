@@ -54,8 +54,6 @@
 #include "vgui_ServerBrowser.h"
 #include "vgui_ScorePanel.h"
 #include "vgui_SpectatorPanel.h"
-#include "vgui_CrosshairMenu.h"
-#include "vgui_AGSettingsMenu.h"
 
 #include "shake.h"
 #include "screenfade.h"
@@ -63,6 +61,7 @@
 #include "discord_integration.h"
 #include "forcemodel.h"
 #include "gameui.h"
+#include "imgui_helper.h"
 
 void IN_SetVisibleMouse(bool visible);
 class CCommandMenu;
@@ -88,6 +87,10 @@ extern CMenuPanel *CMessageWindowPanel_Create( const char *szMOTD, const char *s
 extern float * GetClientColor( int clientIndex );
 
 using namespace vgui;
+
+extern bool g_ShowImGuiMenu;
+extern bool g_ShowCrosshairEditor;
+extern bool g_ShowAGSettings;
 
 // Team Colors
 int iNumberOfTeamColors = 5;
@@ -554,8 +557,6 @@ TeamFortressViewport::TeamFortressViewport(int x,int y,int wide,int tall) : Pane
 	m_pSpectatorPanel = NULL;
 	m_pCurrentMenu = NULL;
 	m_pCurrentCommandMenu = NULL;
-	m_pCrosshairMenu = NULL;
-	m_pAGSettingsMenu = NULL;
 
 	Initialize();
 	addInputSignal( new CViewPortInputHandler );
@@ -1718,7 +1719,11 @@ void TeamFortressViewport::CreateScoreBoard( void )
 
 void TeamFortressViewport::CreateServerBrowser( void )
 {
-	m_pServerBrowser = new ServerBrowser( 0, 0, ScreenWidth, ScreenHeight );
+	int sbWidth = (int)((float)ScreenWidth * 0.8f);
+	int sbHeight = (int)((float)ScreenHeight * 0.8f);
+	int sbX = (ScreenWidth - sbWidth) / 2;
+	int sbY = (ScreenHeight - sbHeight) / 2;
+	m_pServerBrowser = new ServerBrowser( sbX, sbY, sbWidth, sbHeight );
 	m_pServerBrowser->setParent(this);
 	m_pServerBrowser->setVisible(false);
 }
@@ -1928,14 +1933,6 @@ void TeamFortressViewport::ShowVGUIMenu( int iMenu )
 		pNewMenu = ShowClassMenu();
 		break;
 
-	case MENU_CROSSHAIR:
-		pNewMenu = ShowCrosshairMenu();
-		break;
-
-	case MENU_AGSETTINGS:
-		pNewMenu = ShowAGSettingsMenu();
-		break;
-
 	default:
 		break;
 	}
@@ -2035,37 +2032,7 @@ void TeamFortressViewport::CreateTeamMenu()
 	m_pTeamMenu->setVisible( false );
 }
 
-CMenuPanel* TeamFortressViewport::ShowCrosshairMenu()
-{
-	if ( gEngfuncs.pDemoAPI->IsPlayingback() )
-		return NULL;
 
-	if (!m_pCrosshairMenu)
-	{
-		m_pCrosshairMenu = new CCrosshairMenuPanel(180, false, XRES(20), (ScreenHeight - YRES(440)) / 2, XRES(260), YRES(440));
-		m_pCrosshairMenu->setParent(this);
-		m_pCrosshairMenu->setVisible(false);
-	}
-
-	m_pCrosshairMenu->Reset();
-	return m_pCrosshairMenu;
-}
-
-CMenuPanel* TeamFortressViewport::ShowAGSettingsMenu()
-{
-	if ( gEngfuncs.pDemoAPI->IsPlayingback() )
-		return NULL;
-
-	if (!m_pAGSettingsMenu)
-	{
-		m_pAGSettingsMenu = new CAGSettingsPanel(180, false, XRES(20), (ScreenHeight - YRES(280)) / 2, XRES(260), YRES(280));
-		m_pAGSettingsMenu->setParent(this);
-		m_pAGSettingsMenu->setVisible(false);
-	}
-
-	m_pAGSettingsMenu->Reset();
-	return m_pAGSettingsMenu;
-}
 
 //======================================================================================
 // CLASS MENU
@@ -2120,8 +2087,8 @@ void TeamFortressViewport::UpdateOnPlayerInfo()
 
 void TeamFortressViewport::UpdateCursorState()
 {
-	// Need cursor if any VGUI window is up
-	if ( m_pSpectatorPanel->m_menuVisible || m_pCurrentMenu || m_pTeamMenu->isVisible() || m_pServerBrowser->isVisible() || (m_pCrosshairMenu && m_pCrosshairMenu->isVisible()) || (m_pAGSettingsMenu && m_pAGSettingsMenu->isVisible()) || GetClientVoiceMgr()->IsInSquelchMode() || (g_pGameUI && g_pGameUI->IsGameUIVisible()) )
+	// Need cursor if any VGUI window is up or ImGui menu is open
+	if ( g_ShowImGuiMenu || g_ShowCrosshairEditor || g_ShowAGSettings || g_ShowPauseMenu || g_ShowMainMenu || m_pSpectatorPanel->m_menuVisible || m_pCurrentMenu || m_pTeamMenu->isVisible() || m_pServerBrowser->isVisible() || GetClientVoiceMgr()->IsInSquelchMode() || (g_pGameUI && g_pGameUI->IsGameUIVisible()) )
 	{
 		IN_SetVisibleMouse(true);
 		App::getInstance()->setCursorOveride( App::getInstance()->getScheme()->getCursor(Scheme::scu_arrow) );
