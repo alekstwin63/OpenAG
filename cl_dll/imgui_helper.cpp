@@ -915,11 +915,11 @@ void ImGuiHelper_Draw()
 						gEngfuncs.Cvar_SetValue("cl_motion_blur_shutter", motionBlurShutterVal);
 					}
 
-					cvar_t* pMotionBlurMult = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_multiplier");
-					float motionBlurMultVal = pMotionBlurMult ? pMotionBlurMult->value : 1.0f;
-					if (ImGui::SliderFloat("Blur Intensity Multiplier", &motionBlurMultVal, 0.1f, 3.0f, "%.1fx"))
+					cvar_t* pMotionBlurAlpha = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_alpha");
+					float motionBlurAlphaVal = pMotionBlurAlpha ? pMotionBlurAlpha->value : 0.12f;
+					if (ImGui::SliderFloat("Blur Trail Opacity (Alpha)", &motionBlurAlphaVal, 0.01f, 0.25f, "%.2f"))
 					{
-						gEngfuncs.Cvar_SetValue("cl_motion_blur_multiplier", motionBlurMultVal);
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_alpha", motionBlurAlphaVal);
 					}
 
 					cvar_t* pMotionBlurChromatic = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_chromatic");

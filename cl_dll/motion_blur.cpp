@@ -9,7 +9,7 @@ namespace motion_blur
 {
 	static cvar_t* cl_motion_blur = nullptr;
 	static cvar_t* cl_motion_blur_shutter = nullptr;
-	static cvar_t* cl_motion_blur_multiplier = nullptr;
+	static cvar_t* cl_motion_blur_alpha = nullptr;
 	static cvar_t* cl_motion_blur_max = nullptr;
 	static cvar_t* cl_motion_blur_chromatic = nullptr;
 
@@ -57,7 +57,7 @@ namespace motion_blur
 	{
 		cl_motion_blur = CVAR_CREATE("cl_motion_blur", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 		cl_motion_blur_shutter = CVAR_CREATE("cl_motion_blur_shutter", "0.015", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
-		cl_motion_blur_multiplier = CVAR_CREATE("cl_motion_blur_multiplier", "1.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+		cl_motion_blur_alpha = CVAR_CREATE("cl_motion_blur_alpha", "0.12", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 		cl_motion_blur_max = CVAR_CREATE("cl_motion_blur_max", "30.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 		cl_motion_blur_chromatic = CVAR_CREATE("cl_motion_blur_chromatic", "0.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 	}
@@ -104,17 +104,15 @@ namespace motion_blur
 		if (dt > 0.1f) dt = 0.1f;
 
 		float shutter_time = cl_motion_blur_shutter ? cl_motion_blur_shutter->value : 0.015f;
-		float multiplier = cl_motion_blur_multiplier ? cl_motion_blur_multiplier->value : 1.0f;
-
-		float vx = (dy / dt) * shutter_time * multiplier;
-		float vy = -(dp / dt) * shutter_time * multiplier;
+		float vx = (dy / dt) * shutter_time;
+		float vy = -(dp / dt) * shutter_time;
 
 		float max_len = cl_motion_blur_max ? cl_motion_blur_max->value : 30.0f;
 		float len = sqrtf(vx * vx + vy * vy);
 
 		if (len < 0.5f)
 		{
-			// Motion is too small, skip rendering blur to save performance and keep image crisp
+			// Motion is too small, skip rendering to keep the frame perfectly crisp
 			return;
 		}
 
@@ -173,6 +171,9 @@ namespace motion_blur
 		glEnable(GL_TEXTURE_2D);
 
 		glBindTexture(GL_TEXTURE_2D, g_ScreenTexture);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
 		float u = (float)w / tw;
 		float v = (float)h / th;
@@ -181,31 +182,21 @@ namespace motion_blur
 		float v_vel = (vy / h) * v;
 
 		float chromatic = cl_motion_blur_chromatic ? cl_motion_blur_chromatic->value : 0.0f;
+		float alpha = cl_motion_blur_alpha ? cl_motion_blur_alpha->value : 0.12f;
 
-		// 7 samples is the sweet spot for smooth directional blur on modern GPUs
-		const int samples = 7;
+		// 4 shifted samples (2 forward, 2 backward) overlaid on top of the original unshifted frame
+		const int samples = 4;
+		float offsets[samples] = { -0.4f, -0.2f, 0.2f, 0.4f };
 
-		for (int i = 1; i <= samples; i++)
+		for (int i = 0; i < samples; i++)
 		{
-			float t = ((float)(i - 1) / (float)(samples - 1)) - 0.5f; // -0.5 to 0.5
-
-			if (i == 1)
-			{
-				glDisable(GL_BLEND);
-				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-			}
-			else
-			{
-				glEnable(GL_BLEND);
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-				float alpha = 1.0f / (float)i;
-				glColor4f(1.0f, 1.0f, 1.0f, alpha);
-			}
+			float t = offsets[i];
 
 			if (chromatic > 0.0f)
 			{
-				// Red Channel Pass (slightly larger offset)
+				// Red Channel Pass
 				glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_FALSE);
+				glColor4f(1.0f, 1.0f, 1.0f, alpha);
 				float r_scale = 1.0f + (chromatic * 0.05f);
 				float offset_u_r = t * u_vel * r_scale;
 				float offset_v_r = t * v_vel * r_scale;
@@ -216,8 +207,9 @@ namespace motion_blur
 				glTexCoord2f(0.0f + offset_u_r, v + offset_v_r);    glVertex2f(0.0f, 1.0f);
 				glEnd();
 
-				// Green Channel Pass (normal offset)
+				// Green Channel Pass
 				glColorMask(GL_FALSE, GL_TRUE, GL_FALSE, GL_FALSE);
+				glColor4f(1.0f, 1.0f, 1.0f, alpha);
 				float offset_u_g = t * u_vel;
 				float offset_v_g = t * v_vel;
 				glBegin(GL_QUADS);
@@ -227,8 +219,9 @@ namespace motion_blur
 				glTexCoord2f(0.0f + offset_u_g, v + offset_v_g);    glVertex2f(0.0f, 1.0f);
 				glEnd();
 
-				// Blue Channel Pass (slightly smaller offset)
+				// Blue Channel Pass
 				glColorMask(GL_FALSE, GL_FALSE, GL_TRUE, GL_FALSE);
+				glColor4f(1.0f, 1.0f, 1.0f, alpha);
 				float b_scale = 1.0f - (chromatic * 0.05f);
 				float offset_u_b = t * u_vel * b_scale;
 				float offset_v_b = t * v_vel * b_scale;
@@ -243,6 +236,7 @@ namespace motion_blur
 			}
 			else
 			{
+				glColor4f(1.0f, 1.0f, 1.0f, alpha);
 				float offset_u = t * u_vel;
 				float offset_v = t * v_vel;
 
