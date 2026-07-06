@@ -908,11 +908,18 @@ void ImGuiHelper_Draw()
 
 				if (motionBlurVal)
 				{
-					cvar_t* pMotionBlurTime = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_time");
-					float motionBlurTimeVal = pMotionBlurTime ? pMotionBlurTime->value : 0.04f;
-					if (ImGui::SliderFloat("Blur Trail Duration", &motionBlurTimeVal, 0.01f, 0.20f, "%.2f sec"))
+					cvar_t* pMotionBlurShutter = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_shutter");
+					float motionBlurShutterVal = pMotionBlurShutter ? pMotionBlurShutter->value : 0.015f;
+					if (ImGui::SliderFloat("Camera Shutter Speed", &motionBlurShutterVal, 0.005f, 0.05f, "%.3f sec"))
 					{
-						gEngfuncs.Cvar_SetValue("cl_motion_blur_time", motionBlurTimeVal);
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_shutter", motionBlurShutterVal);
+					}
+
+					cvar_t* pMotionBlurMult = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_multiplier");
+					float motionBlurMultVal = pMotionBlurMult ? pMotionBlurMult->value : 1.0f;
+					if (ImGui::SliderFloat("Blur Intensity Multiplier", &motionBlurMultVal, 0.1f, 3.0f, "%.1fx"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_multiplier", motionBlurMultVal);
 					}
 
 					cvar_t* pMotionBlurChromatic = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_chromatic");

@@ -8,12 +8,17 @@
 namespace motion_blur
 {
 	static cvar_t* cl_motion_blur = nullptr;
-	static cvar_t* cl_motion_blur_time = nullptr;
+	static cvar_t* cl_motion_blur_shutter = nullptr;
+	static cvar_t* cl_motion_blur_multiplier = nullptr;
+	static cvar_t* cl_motion_blur_max = nullptr;
 	static cvar_t* cl_motion_blur_chromatic = nullptr;
 
-	static GLuint g_AccumTexture = 0;
+	static GLuint g_ScreenTexture = 0;
 	static int g_LastWidth = 0;
 	static int g_LastHeight = 0;
+
+	static float g_LastAngles[3] = {0.0f, 0.0f, 0.0f};
+	static bool g_HasLastAngles = false;
 
 	static int NextPowerOfTwo(int n)
 	{
@@ -23,20 +28,20 @@ namespace motion_blur
 		return val;
 	}
 
-	static void InitTextures(int w, int h, bool& is_new)
+	static void InitTextures(int w, int h)
 	{
 		int tw = NextPowerOfTwo(w);
 		int th = NextPowerOfTwo(h);
 
-		if (g_AccumTexture == 0 || g_LastWidth != w || g_LastHeight != h)
+		if (g_ScreenTexture == 0 || g_LastWidth != w || g_LastHeight != h)
 		{
-			if (g_AccumTexture != 0)
+			if (g_ScreenTexture != 0)
 			{
-				glDeleteTextures(1, &g_AccumTexture);
+				glDeleteTextures(1, &g_ScreenTexture);
 			}
 
-			glGenTextures(1, &g_AccumTexture);
-			glBindTexture(GL_TEXTURE_2D, g_AccumTexture);
+			glGenTextures(1, &g_ScreenTexture);
+			glBindTexture(GL_TEXTURE_2D, g_ScreenTexture);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -45,14 +50,15 @@ namespace motion_blur
 
 			g_LastWidth = w;
 			g_LastHeight = h;
-			is_new = true;
 		}
 	}
 
 	void init()
 	{
 		cl_motion_blur = CVAR_CREATE("cl_motion_blur", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
-		cl_motion_blur_time = CVAR_CREATE("cl_motion_blur_time", "0.04", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+		cl_motion_blur_shutter = CVAR_CREATE("cl_motion_blur_shutter", "0.015", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+		cl_motion_blur_multiplier = CVAR_CREATE("cl_motion_blur_multiplier", "1.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+		cl_motion_blur_max = CVAR_CREATE("cl_motion_blur_max", "30.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 		cl_motion_blur_chromatic = CVAR_CREATE("cl_motion_blur_chromatic", "0.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 	}
 
@@ -69,32 +75,65 @@ namespace motion_blur
 		if (w <= 0 || h <= 0)
 			return;
 
-		bool is_new = false;
-		InitTextures(w, h, is_new);
+		float angles[3];
+		gEngfuncs.GetViewAngles(angles);
 
-		int tw = NextPowerOfTwo(w);
-		int th = NextPowerOfTwo(h);
-
-		if (is_new)
+		if (!g_HasLastAngles)
 		{
-			glBindTexture(GL_TEXTURE_2D, g_AccumTexture);
-			glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+			g_LastAngles[0] = angles[0];
+			g_LastAngles[1] = angles[1];
+			g_LastAngles[2] = angles[2];
+			g_HasLastAngles = true;
 			return;
 		}
 
-		// Calculate frame-rate independent blend factor (alpha)
+		float dp = angles[0] - g_LastAngles[0];
+		float dy = angles[1] - g_LastAngles[1];
+
+		if (dp > 180.0f) dp -= 360.0f;
+		if (dp < -180.0f) dp += 360.0f;
+		if (dy > 180.0f) dy -= 360.0f;
+		if (dy < -180.0f) dy += 360.0f;
+
+		g_LastAngles[0] = angles[0];
+		g_LastAngles[1] = angles[1];
+		g_LastAngles[2] = angles[2];
+
 		float dt = (float)gHUD.m_flTimeDelta;
 		if (dt < 0.001f) dt = 0.001f;
 		if (dt > 0.1f) dt = 0.1f;
 
-		float decay_time = cl_motion_blur_time ? cl_motion_blur_time->value : 0.15f;
-		if (decay_time < 0.01f) decay_time = 0.01f;
+		float shutter_time = cl_motion_blur_shutter ? cl_motion_blur_shutter->value : 0.015f;
+		float multiplier = cl_motion_blur_multiplier ? cl_motion_blur_multiplier->value : 1.0f;
 
-		float blur_alpha = expf(-dt / decay_time);
-		if (blur_alpha < 0.0f) blur_alpha = 0.0f;
-		if (blur_alpha > 0.98f) blur_alpha = 0.98f;
+		float vx = (dy / dt) * shutter_time * multiplier;
+		float vy = -(dp / dt) * shutter_time * multiplier;
 
-		// Push OpenGL attributes and matrices
+		float max_len = cl_motion_blur_max ? cl_motion_blur_max->value : 30.0f;
+		float len = sqrtf(vx * vx + vy * vy);
+
+		if (len < 0.5f)
+		{
+			// Motion is too small, skip rendering blur to save performance and keep image crisp
+			return;
+		}
+
+		if (len > max_len)
+		{
+			vx = (vx / len) * max_len;
+			vy = (vy / len) * max_len;
+		}
+
+		InitTextures(w, h);
+
+		int tw = NextPowerOfTwo(w);
+		int th = NextPowerOfTwo(h);
+
+		// Capture current screen
+		glBindTexture(GL_TEXTURE_2D, g_ScreenTexture);
+		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+
+		// Push OpenGL state
 		glPushAttrib(GL_ALL_ATTRIB_BITS);
 		glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
 
@@ -105,7 +144,6 @@ namespace motion_blur
 		glMatrixMode(GL_TEXTURE);
 		glPushMatrix();
 
-		// Set up 2D orthographic projection
 		glMatrixMode(GL_PROJECTION);
 		glLoadIdentity();
 		glOrtho(0.0, 1.0, 0.0, 1.0, -1.0, 1.0);
@@ -116,7 +154,6 @@ namespace motion_blur
 		glMatrixMode(GL_TEXTURE);
 		glLoadIdentity();
 
-		// Disable all client arrays to prevent crashes with stale engine pointers
 		glDisableClientState(GL_VERTEX_ARRAY);
 		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 		glDisableClientState(GL_COLOR_ARRAY);
@@ -128,7 +165,6 @@ namespace motion_blur
 		glDisable(GL_CULL_FACE);
 		glDisable(GL_SCISSOR_TEST);
 
-		// Select texture unit 0 and disable units 1 & 2
 		glActiveTexture(GL_TEXTURE1);
 		glDisable(GL_TEXTURE_2D);
 		glActiveTexture(GL_TEXTURE2);
@@ -136,76 +172,88 @@ namespace motion_blur
 		glActiveTexture(GL_TEXTURE0);
 		glEnable(GL_TEXTURE_2D);
 
-		glBindTexture(GL_TEXTURE_2D, g_AccumTexture);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		glBindTexture(GL_TEXTURE_2D, g_ScreenTexture);
 
 		float u = (float)w / tw;
 		float v = (float)h / th;
 
-		// Simple LCG random generator for sub-pixel jitter to smooth out ghosting/stepping
-		static unsigned int seed = 12345;
-		seed = seed * 1664525 + 1013904223;
-		float jx = (((float)(seed & 0xFFFF) / 65535.0f) - 0.5f) * 0.5f; // -0.25 to 0.25 pixels
-		seed = seed * 1664525 + 1013904223;
-		float jy = (((float)(seed & 0xFFFF) / 65535.0f) - 0.5f) * 0.5f; // -0.25 to 0.25 pixels
+		float u_vel = (vx / w) * u;
+		float v_vel = (vy / h) * v;
 
-		float jx_offset = jx / w;
-		float jy_offset = jy / h;
+		float chromatic = cl_motion_blur_chromatic ? cl_motion_blur_chromatic->value : 0.0f;
 
-		float chromatic_strength = cl_motion_blur_chromatic ? cl_motion_blur_chromatic->value : 1.5f;
-		float shift_x = chromatic_strength / w;
+		// 7 samples is the sweet spot for smooth directional blur on modern GPUs
+		const int samples = 7;
 
-		if (chromatic_strength > 0.0f)
+		for (int i = 1; i <= samples; i++)
 		{
-			// 1. Red Channel Pass
-			glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_FALSE);
-			glColor4f(1.0f, 1.0f, 1.0f, blur_alpha);
-			glBegin(GL_QUADS);
-			glTexCoord2f(0.0f, 0.0f); glVertex2f(-shift_x + jx_offset, jy_offset);
-			glTexCoord2f(u,    0.0f); glVertex2f(1.0f - shift_x + jx_offset, jy_offset);
-			glTexCoord2f(u,    v   ); glVertex2f(1.0f - shift_x + jx_offset, 1.0f + jy_offset);
-			glTexCoord2f(0.0f, v   ); glVertex2f(-shift_x + jx_offset, 1.0f + jy_offset);
-			glEnd();
+			float t = ((float)(i - 1) / (float)(samples - 1)) - 0.5f; // -0.5 to 0.5
 
-			// 2. Green Channel Pass
-			glColorMask(GL_FALSE, GL_TRUE, GL_FALSE, GL_FALSE);
-			glColor4f(1.0f, 1.0f, 1.0f, blur_alpha);
-			glBegin(GL_QUADS);
-			glTexCoord2f(0.0f, 0.0f); glVertex2f(jx_offset, jy_offset);
-			glTexCoord2f(u,    0.0f); glVertex2f(1.0f + jx_offset, jy_offset);
-			glTexCoord2f(u,    v   ); glVertex2f(1.0f + jx_offset, 1.0f + jy_offset);
-			glTexCoord2f(0.0f, v   ); glVertex2f(jx_offset, 1.0f + jy_offset);
-			glEnd();
+			if (i == 1)
+			{
+				glDisable(GL_BLEND);
+				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+			}
+			else
+			{
+				glEnable(GL_BLEND);
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				float alpha = 1.0f / (float)i;
+				glColor4f(1.0f, 1.0f, 1.0f, alpha);
+			}
 
-			// 3. Blue Channel Pass
-			glColorMask(GL_FALSE, GL_FALSE, GL_TRUE, GL_FALSE);
-			glColor4f(1.0f, 1.0f, 1.0f, blur_alpha);
-			glBegin(GL_QUADS);
-			glTexCoord2f(0.0f, 0.0f); glVertex2f(shift_x + jx_offset, jy_offset);
-			glTexCoord2f(u,    0.0f); glVertex2f(1.0f + shift_x + jx_offset, jy_offset);
-			glTexCoord2f(u,    v   ); glVertex2f(1.0f + shift_x + jx_offset, 1.0f + jy_offset);
-			glTexCoord2f(0.0f, v   ); glVertex2f(shift_x + jx_offset, 1.0f + jy_offset);
-			glEnd();
+			if (chromatic > 0.0f)
+			{
+				// Red Channel Pass (slightly larger offset)
+				glColorMask(GL_TRUE, GL_FALSE, GL_FALSE, GL_FALSE);
+				float r_scale = 1.0f + (chromatic * 0.05f);
+				float offset_u_r = t * u_vel * r_scale;
+				float offset_v_r = t * v_vel * r_scale;
+				glBegin(GL_QUADS);
+				glTexCoord2f(0.0f + offset_u_r, 0.0f + offset_v_r); glVertex2f(0.0f, 0.0f);
+				glTexCoord2f(u + offset_u_r,    0.0f + offset_v_r); glVertex2f(1.0f, 0.0f);
+				glTexCoord2f(u + offset_u_r,    v + offset_v_r);    glVertex2f(1.0f, 1.0f);
+				glTexCoord2f(0.0f + offset_u_r, v + offset_v_r);    glVertex2f(0.0f, 1.0f);
+				glEnd();
 
-			// Restore full color mask
-			glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+				// Green Channel Pass (normal offset)
+				glColorMask(GL_FALSE, GL_TRUE, GL_FALSE, GL_FALSE);
+				float offset_u_g = t * u_vel;
+				float offset_v_g = t * v_vel;
+				glBegin(GL_QUADS);
+				glTexCoord2f(0.0f + offset_u_g, 0.0f + offset_v_g); glVertex2f(0.0f, 0.0f);
+				glTexCoord2f(u + offset_u_g,    0.0f + offset_v_g); glVertex2f(1.0f, 0.0f);
+				glTexCoord2f(u + offset_u_g,    v + offset_v_g);    glVertex2f(1.0f, 1.0f);
+				glTexCoord2f(0.0f + offset_u_g, v + offset_v_g);    glVertex2f(0.0f, 1.0f);
+				glEnd();
+
+				// Blue Channel Pass (slightly smaller offset)
+				glColorMask(GL_FALSE, GL_FALSE, GL_TRUE, GL_FALSE);
+				float b_scale = 1.0f - (chromatic * 0.05f);
+				float offset_u_b = t * u_vel * b_scale;
+				float offset_v_b = t * v_vel * b_scale;
+				glBegin(GL_QUADS);
+				glTexCoord2f(0.0f + offset_u_b, 0.0f + offset_v_b); glVertex2f(0.0f, 0.0f);
+				glTexCoord2f(u + offset_u_b,    0.0f + offset_v_b); glVertex2f(1.0f, 0.0f);
+				glTexCoord2f(u + offset_u_b,    v + offset_v_b);    glVertex2f(1.0f, 1.0f);
+				glTexCoord2f(0.0f + offset_u_b, v + offset_v_b);    glVertex2f(0.0f, 1.0f);
+				glEnd();
+
+				glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+			}
+			else
+			{
+				float offset_u = t * u_vel;
+				float offset_v = t * v_vel;
+
+				glBegin(GL_QUADS);
+				glTexCoord2f(0.0f + offset_u, 0.0f + offset_v); glVertex2f(0.0f, 0.0f);
+				glTexCoord2f(u + offset_u,    0.0f + offset_v); glVertex2f(1.0f, 0.0f);
+				glTexCoord2f(u + offset_u,    v + offset_v);    glVertex2f(1.0f, 1.0f);
+				glTexCoord2f(0.0f + offset_u, v + offset_v);    glVertex2f(0.0f, 1.0f);
+				glEnd();
+			}
 		}
-		else
-		{
-			glColor4f(1.0f, 1.0f, 1.0f, blur_alpha);
-			glBegin(GL_QUADS);
-			glTexCoord2f(0.0f, 0.0f); glVertex2f(jx_offset, jy_offset);
-			glTexCoord2f(u,    0.0f); glVertex2f(1.0f + jx_offset, jy_offset);
-			glTexCoord2f(u,    v   ); glVertex2f(1.0f + jx_offset, 1.0f + jy_offset);
-			glTexCoord2f(0.0f, v   ); glVertex2f(jx_offset, 1.0f + jy_offset);
-			glEnd();
-		}
-
-		// 2. Capture the blended result from the framebuffer back into g_AccumTexture
-		glBindTexture(GL_TEXTURE_2D, g_AccumTexture);
-		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
 
 		// Restore OpenGL state
 		glMatrixMode(GL_TEXTURE);
