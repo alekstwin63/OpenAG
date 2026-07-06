@@ -864,6 +864,40 @@ void ImGuiHelper_Draw()
 				}
 			}
 
+			if (ImGui::CollapsingHeader("Graphics / Post-Processing"))
+			{
+				cvar_t* pBloom = gEngfuncs.pfnGetCvarPointer("cl_bloom");
+				bool bloomVal = pBloom ? (pBloom->value != 0.0f) : false;
+				if (ImGui::Checkbox("Enable Bloom Effect", &bloomVal))
+				{
+					gEngfuncs.Cvar_SetValue("cl_bloom", bloomVal ? 1.0f : 0.0f);
+				}
+
+				if (bloomVal)
+				{
+					cvar_t* pBloomIntensity = gEngfuncs.pfnGetCvarPointer("cl_bloom_intensity");
+					float bloomIntensityVal = pBloomIntensity ? pBloomIntensity->value : 0.5f;
+					if (ImGui::SliderFloat("Bloom Intensity", &bloomIntensityVal, 0.1f, 2.0f, "%.2f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_bloom_intensity", bloomIntensityVal);
+					}
+
+					cvar_t* pBloomRadius = gEngfuncs.pfnGetCvarPointer("cl_bloom_radius");
+					float bloomRadiusVal = pBloomRadius ? pBloomRadius->value : 2.0f;
+					if (ImGui::SliderFloat("Bloom Blur Radius", &bloomRadiusVal, 0.5f, 6.0f, "%.1f px"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_bloom_radius", bloomRadiusVal);
+					}
+
+					cvar_t* pBloomDarkness = gEngfuncs.pfnGetCvarPointer("cl_bloom_darkness");
+					int bloomDarknessVal = pBloomDarkness ? (int)pBloomDarkness->value : 1;
+					if (ImGui::SliderInt("Bloom Threshold (Darkness)", &bloomDarknessVal, 0, 4, "%d"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_bloom_darkness", (float)bloomDarknessVal);
+					}
+				}
+			}
+
 			ImGui::Separator();
 
 			cvar_t* pFootstep = gEngfuncs.pfnGetCvarPointer("cl_footstep_volume");

@@ -126,6 +126,8 @@ add_sources(
 	damage_numbers.h
 	spawns.cpp
 	spawns.h
+	bloom.cpp
+	bloom.h
 	vgui_int.cpp
 	vgui_int.h
 	vgui_MOTDWindow.cpp
