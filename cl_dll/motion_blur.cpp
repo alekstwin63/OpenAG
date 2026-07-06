@@ -52,8 +52,8 @@ namespace motion_blur
 	void init()
 	{
 		cl_motion_blur = CVAR_CREATE("cl_motion_blur", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
-		cl_motion_blur_time = CVAR_CREATE("cl_motion_blur_time", "0.15", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
-		cl_motion_blur_chromatic = CVAR_CREATE("cl_motion_blur_chromatic", "1.5", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+		cl_motion_blur_time = CVAR_CREATE("cl_motion_blur_time", "0.04", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
+		cl_motion_blur_chromatic = CVAR_CREATE("cl_motion_blur_chromatic", "0.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE);
 	}
 
 	void draw()
