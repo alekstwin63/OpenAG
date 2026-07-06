@@ -25,6 +25,15 @@ namespace bloom
 		return val;
 	}
 
+	static void CheckGLError(const char* label)
+	{
+		GLenum err;
+		while ((err = glGetError()) != GL_NO_ERROR)
+		{
+			gEngfuncs.Con_Printf("[Bloom] GL Error at %s: 0x%x\n", label, err);
+		}
+	}
+
 	static void InitTextures(int w, int h)
 	{
 		int tw = NextPowerOfTwo(w);
@@ -41,9 +50,10 @@ namespace bloom
 			glBindTexture(GL_TEXTURE_2D, g_ScreenTexture);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tw, th, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+			CheckGLError("Init g_ScreenTexture");
 
 			g_LastWidth = w;
 			g_LastHeight = h;
@@ -55,9 +65,10 @@ namespace bloom
 			glBindTexture(GL_TEXTURE_2D, g_BloomTexture);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+			CheckGLError("Init g_BloomTexture");
 		}
 	}
 
@@ -90,6 +101,7 @@ namespace bloom
 		// 1. Capture full screen into g_ScreenTexture
 		glBindTexture(GL_TEXTURE_2D, g_ScreenTexture);
 		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+		CheckGLError("Capture screen glCopyTexSubImage2D");
 
 		// Push OpenGL attributes and matrices to prevent state leakage to GoldSrc engine
 		glPushAttrib(GL_ALL_ATTRIB_BITS);
@@ -120,6 +132,8 @@ namespace bloom
 		glDisable(GL_SCISSOR_TEST);
 		glEnable(GL_TEXTURE_2D);
 
+		CheckGLError("Setup rendering state");
+
 		// 2. Set viewport to 256x256 to downscale screen rendering on GPU
 		glViewport(0, 0, 256, 256);
 
@@ -138,6 +152,8 @@ namespace bloom
 		glTexCoord2f(0.0f, v   ); glVertex2f(0.0f, 1.0f);
 		glEnd();
 
+		CheckGLError("Draw downscaled screen");
+
 		// Apply contrast/darkness thresholding by multiplying the texture by itself (squaring the color values)
 		int darkness_passes = cl_bloom_darkness ? (int)cl_bloom_darkness->value : 1;
 		if (darkness_passes > 0)
@@ -155,9 +171,12 @@ namespace bloom
 			}
 		}
 
+		CheckGLError("Apply threshold passes");
+
 		// 3. Copy downscaled & thresholded result to g_BloomTexture
 		glBindTexture(GL_TEXTURE_2D, g_BloomTexture);
 		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, 256, 256);
+		CheckGLError("Copy to g_BloomTexture");
 
 		// 4. Restore original viewport
 		glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -179,6 +198,8 @@ namespace bloom
 		glTexCoord2f(u_restore, v_restore); glVertex2f(tx,   ty);
 		glTexCoord2f(0.0f,      v_restore); glVertex2f(0.0f,   ty);
 		glEnd();
+
+		CheckGLError("Restore bottom-left corner");
 
 		// 6. Draw bloom texture additively over the whole screen in multiple passes for smooth blur
 		glEnable(GL_BLEND);
