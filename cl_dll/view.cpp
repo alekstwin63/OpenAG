@@ -20,6 +20,7 @@
 #include "shake.h"
 #include "hltv.h"
 #include "Exports.h"
+#include "weapon_sway.h"
 
 
 #ifndef M_PI
@@ -386,6 +387,9 @@ void V_CalcGunAngle ( struct ref_params_s *pparams )
 
 	VectorCopy( viewent->angles, viewent->curstate.angles );
 	VectorCopy( viewent->angles, viewent->latched.prevangles );
+
+	// Apply Half-Life 2 style weapon sway
+	weapon_sway::apply(pparams, viewent);
 }
 
 /*
@@ -1795,6 +1799,8 @@ void V_Init (void)
 	cl_viewmodel_ofs_right		= gEngfuncs.pfnRegisterVariable( "cl_viewmodel_ofs_right","0", FCVAR_ARCHIVE ); // x = right
 	cl_viewmodel_ofs_forward	= gEngfuncs.pfnRegisterVariable( "cl_viewmodel_ofs_forward","0", FCVAR_ARCHIVE ); // y = forward
 	cl_viewmodel_ofs_up		    = gEngfuncs.pfnRegisterVariable( "cl_viewmodel_ofs_up","0", FCVAR_ARCHIVE ); // z = up
+
+	weapon_sway::init();
 }
 
 

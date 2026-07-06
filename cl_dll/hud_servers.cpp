@@ -1017,7 +1017,10 @@ void CHudServers::AddSteamServer( gameserveritem_t *pDetails )
 	netadr_t adr;
 	memset( &adr, 0, sizeof( adr ) );
 	adr.type = NA_IP;
-	memcpy( adr.ip, &pDetails->m_NetAdr.m_unIP, 4 );
+	adr.ip[0] = (pDetails->m_NetAdr.m_unIP >> 24) & 0xFF;
+	adr.ip[1] = (pDetails->m_NetAdr.m_unIP >> 16) & 0xFF;
+	adr.ip[2] = (pDetails->m_NetAdr.m_unIP >> 8) & 0xFF;
+	adr.ip[3] = pDetails->m_NetAdr.m_unIP & 0xFF;
 	adr.port = htons(pDetails->m_NetAdr.m_usConnectionPort);
 
 	// Construct the info string
@@ -1082,17 +1085,30 @@ void CHudServers::RequestList( void )
 	int appId = 70; // Half-Life 1 AppID
 	gEngfuncs.Con_Printf("SteamMatchmaking: Requesting Internet Servers for AppID=%d...\n", appId);
 
-	MatchMakingKeyValuePair_t filters[1];
-	strcpy(filters[0].m_szKey, "gamedir");
-	strcpy(filters[0].m_szValue, "ag");
-	MatchMakingKeyValuePair_t* pFilters[1] = { &filters[0] };
+	extern bool g_FilterAGOnly;
+	if (g_FilterAGOnly)
+	{
+		MatchMakingKeyValuePair_t filters[1];
+		strcpy(filters[0].m_szKey, "gamedir");
+		strcpy(filters[0].m_szValue, "ag");
+		MatchMakingKeyValuePair_t* pFilters[1] = { &filters[0] };
 
-	g_hSteamInternetQuery = pMatchmakingServers->RequestInternetServerList(
-		appId,
-		(void**)pFilters,
-		1,
-		g_pInternetResponse
-	);
+		g_hSteamInternetQuery = pMatchmakingServers->RequestInternetServerList(
+			appId,
+			(void**)pFilters,
+			1,
+			g_pInternetResponse
+		);
+	}
+	else
+	{
+		g_hSteamInternetQuery = pMatchmakingServers->RequestInternetServerList(
+			appId,
+			nullptr,
+			0,
+			g_pInternetResponse
+		);
+	}
 	gEngfuncs.Con_Printf("SteamMatchmaking: Internet Query handle = %p\n", g_hSteamInternetQuery);
 	g_pInternetResponse->SetRequest(g_hSteamInternetQuery);
 }

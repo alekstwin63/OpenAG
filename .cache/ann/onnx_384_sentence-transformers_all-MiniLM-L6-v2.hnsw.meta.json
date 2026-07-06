@@ -1,1 +1,1 @@
-{"engine": "hnsw", "backend": "onnx", "dimensions": 384, "model_name": "sentence-transformers/all-MiniLM-L6-v2", "elements": 6995, "index_fingerprint": "d2e1cdc16b73310bff30a81149097a77", "created_at": "2026-07-05T11:51:36.317026+00:00"}
+{"engine": "hnsw", "backend": "onnx", "dimensions": 384, "model_name": "sentence-transformers/all-MiniLM-L6-v2", "elements": 7013, "index_fingerprint": "d8d6f7da16c7e93f1dd002dc6d8e6c9a", "created_at": "2026-07-05T17:57:28.043316+00:00"}

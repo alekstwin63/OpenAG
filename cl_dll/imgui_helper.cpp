@@ -29,6 +29,23 @@ bool g_ShowPauseMenu = false;
 bool g_ShowMainMenu = false;
 bool g_ShowServerBrowser = false;
 bool g_IsBackgroundMap = true;
+bool g_FilterAGOnly = true;
+bool g_ShowMatchmaking = false;
+
+// Matchmaking state
+enum MatchmakingState { MM_IDLE, MM_SEARCHING, MM_FOUND, MM_CONNECTING };
+static MatchmakingState g_MMState = MM_IDLE;
+static char g_MMBestAddress[128] = "";
+static char g_MMBestName[128]    = "";
+static char g_MMBestMap[64]      = "";
+static int  g_MMBestPing         = 0;
+static int  g_MMBestPlayers      = 0;
+static int  g_MMBestMaxPlayers   = 0;
+static double g_MMConnectAt      = 0.0; // time to auto-connect
+
+ImFont* g_FontDefault = nullptr;
+ImFont* g_FontMedium = nullptr;
+ImFont* g_FontLarge = nullptr;
 
 static const char* g_BackgroundMapName = "maps/echo.bsp";
 
@@ -94,6 +111,29 @@ void ImGuiHelper_VidInit()
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+	// Load Roboto-Medium font at different sizes
+	char fontPath[256];
+	snprintf(fontPath, sizeof(fontPath), "%s/Roboto-Medium.ttf", gEngfuncs.pfnGetGameDirectory());
+
+	g_FontDefault = io.Fonts->AddFontFromFileTTF(fontPath, 14.0f);
+	if (!g_FontDefault)
+	{
+		gEngfuncs.Con_Printf("ImGuiHelper: Failed to load default font from %s, using fallback AddFontDefault()\n", fontPath);
+		g_FontDefault = io.Fonts->AddFontDefault();
+	}
+
+	g_FontMedium = io.Fonts->AddFontFromFileTTF(fontPath, 18.0f);
+	if (!g_FontMedium)
+	{
+		g_FontMedium = io.Fonts->AddFontDefault();
+	}
+
+	g_FontLarge = io.Fonts->AddFontFromFileTTF(fontPath, 45.0f);
+	if (!g_FontLarge)
+	{
+		g_FontLarge = io.Fonts->AddFontDefault();
+	}
 
 	// Use premium dark style
 	ImGui::StyleColorsDark();
@@ -292,7 +332,8 @@ void ImGuiHelper_Draw()
 	ImGui::NewFrame();
 
 	// 1. Fullscreen Main Menu (when disconnected)
-	if (g_ShowMainMenu)
+	// Don't render the main menu when the server browser is open (it would overlap and eat all clicks)
+	if (g_ShowMainMenu && !g_ShowServerBrowser)
 	{
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2((float)ScreenWidth, (float)ScreenHeight));
@@ -304,29 +345,37 @@ void ImGuiHelper_Draw()
 
 		// Left-aligned Title "OPENAG"
 		ImGui::SetCursorPos(ImVec2(80.0f, (float)ScreenHeight * 0.30f));
-		ImGui::SetWindowFontScale(3.5f);
+		ImGui::PushFont(g_FontLarge);
 		ImGui::TextColored(ImVec4(0.38f, 0.45f, 0.98f, 1.00f), "OPENAG");
-		ImGui::SetWindowFontScale(1.0f);
+		ImGui::PopFont();
 
 		// Subtitle
 		ImGui::SetCursorPos(ImVec2(80.0f, (float)ScreenHeight * 0.30f + 65.0f));
-		ImGui::SetWindowFontScale(1.2f);
+		ImGui::PushFont(g_FontMedium);
 		const char* sub = "Modern Dear ImGui Interface";
 		ImGui::TextDisabled("%s", sub);
-		ImGui::SetWindowFontScale(1.0f);
+		ImGui::PopFont();
 
 		// Navigation buttons (Left-aligned)
 		float btn_w = 240.0f;
 		float start_x = 80.0f;
 
 		ImGui::SetCursorPos(ImVec2(start_x, (float)ScreenHeight * 0.30f + 120.0f));
-		if (ImGui::Button("FIND SERVERS", ImVec2(btn_w, 42)))
+		if (ImGui::Button("FIND MATCH", ImVec2(btn_w, 42)))
+		{
+			g_ShowMatchmaking = true;
+			g_MMState = MM_SEARCHING;
+			g_MMBestAddress[0] = '\0';
+			g_MMBestName[0] = '\0';
+			if (g_pServers) g_pServers->RequestList();
+		}
+
+		ImGui::Spacing();
+		ImGui::SetCursorPosX(start_x);
+		if (ImGui::Button("BROWSE SERVERS", ImVec2(btn_w, 34)))
 		{
 			g_ShowServerBrowser = true;
-			if (g_pServers)
-			{
-				g_pServers->RequestList();
-			}
+			if (g_pServers) g_pServers->RequestList();
 		}
 
 		ImGui::Spacing();
@@ -659,7 +708,7 @@ void ImGuiHelper_Draw()
 
 	if (g_ShowAGSettings)
 	{
-		ImGui::SetNextWindowSize(ImVec2(350, 320), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(380, 450), ImGuiCond_FirstUseEver);
 		if (ImGui::Begin("AG Settings", &g_ShowAGSettings, ImGuiWindowFlags_NoCollapse))
 		{
 			cvar_t* pTeammate = gEngfuncs.pfnGetCvarPointer("cl_forceteammate_enable");
@@ -726,6 +775,97 @@ void ImGuiHelper_Draw()
 
 			ImGui::Separator();
 
+			if (ImGui::CollapsingHeader("Weapon Sway Settings"))
+			{
+				cvar_t* pSway = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway");
+				bool swayVal = pSway ? (pSway->value != 0.0f) : true;
+				if (ImGui::Checkbox("Enable Weapon Sway", &swayVal))
+				{
+					gEngfuncs.Cvar_SetValue("cl_weapon_sway", swayVal ? 1.0f : 0.0f);
+				}
+
+				if (swayVal)
+				{
+					cvar_t* pSwayPitch = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_pitch");
+					float swayPitchVal = pSwayPitch ? pSwayPitch->value : 6.0f;
+					if (ImGui::SliderFloat("Pitch Speed", &swayPitchVal, 1.0f, 20.0f, "%.1f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_pitch", swayPitchVal);
+					}
+
+					cvar_t* pSwayYaw = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_yaw");
+					float swayYawVal = pSwayYaw ? pSwayYaw->value : 6.0f;
+					if (ImGui::SliderFloat("Yaw Speed", &swayYawVal, 1.0f, 20.0f, "%.1f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_yaw", swayYawVal);
+					}
+
+					cvar_t* pSwayRollSpeed = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_roll");
+					float swayRollSpeedVal = pSwayRollSpeed ? pSwayRollSpeed->value : 4.0f;
+					if (ImGui::SliderFloat("Roll Speed", &swayRollSpeedVal, 1.0f, 20.0f, "%.1f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_roll", swayRollSpeedVal);
+					}
+
+					cvar_t* pSwayClamp = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_clamp");
+					float swayClampVal = pSwayClamp ? pSwayClamp->value : 10.0f;
+					if (ImGui::SliderFloat("Sway Limit", &swayClampVal, 1.0f, 30.0f, "%.1f deg"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_clamp", swayClampVal);
+					}
+
+					cvar_t* pSwayRollFactor = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_roll_factor");
+					float swayRollFactorVal = pSwayRollFactor ? pSwayRollFactor->value : 0.15f;
+					if (ImGui::SliderFloat("Roll Intensity", &swayRollFactorVal, 0.0f, 1.0f, "%.2f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_roll_factor", swayRollFactorVal);
+					}
+
+					cvar_t* pSwayPosY = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_pos_yaw");
+					float swayPosYVal = pSwayPosY ? pSwayPosY->value : 0.02f;
+					if (ImGui::SliderFloat("Horizontal Shift", &swayPosYVal, 0.0f, 0.1f, "%.3f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_pos_yaw", swayPosYVal);
+					}
+
+					cvar_t* pSwayPosP = gEngfuncs.pfnGetCvarPointer("cl_weapon_sway_pos_pitch");
+					float swayPosPVal = pSwayPosP ? pSwayPosP->value : 0.02f;
+					if (ImGui::SliderFloat("Vertical Shift", &swayPosPVal, 0.0f, 0.1f, "%.3f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_weapon_sway_pos_pitch", swayPosPVal);
+					}
+				}
+			}
+
+			if (ImGui::CollapsingHeader("Spawns Display Settings"))
+			{
+				cvar_t* pShowSpawns = gEngfuncs.pfnGetCvarPointer("cl_show_spawns");
+				bool showSpawnsVal = pShowSpawns ? (pShowSpawns->value != 0.0f) : true;
+				if (ImGui::Checkbox("Show Spawn Points on Screen", &showSpawnsVal))
+				{
+					gEngfuncs.Cvar_SetValue("cl_show_spawns", showSpawnsVal ? 1.0f : 0.0f);
+				}
+
+				if (showSpawnsVal)
+				{
+					cvar_t* pOnlyActive = gEngfuncs.pfnGetCvarPointer("cl_show_spawns_only_active");
+					bool onlyActiveVal = pOnlyActive ? (pOnlyActive->value != 0.0f) : false;
+					if (ImGui::Checkbox("Show Only Active Spawns", &onlyActiveVal))
+					{
+						gEngfuncs.Cvar_SetValue("cl_show_spawns_only_active", onlyActiveVal ? 1.0f : 0.0f);
+					}
+
+					cvar_t* pSpawnsDist = gEngfuncs.pfnGetCvarPointer("cl_show_spawns_dist");
+					float spawnsDistVal = pSpawnsDist ? pSpawnsDist->value : 2000.0f;
+					if (ImGui::SliderFloat("Max Render Distance", &spawnsDistVal, 200.0f, 5000.0f, "%.0f units"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_show_spawns_dist", spawnsDistVal);
+					}
+				}
+			}
+
+			ImGui::Separator();
+
 			cvar_t* pFootstep = gEngfuncs.pfnGetCvarPointer("cl_footstep_volume");
 			int footstepVal = pFootstep ? (int)(pFootstep->value * 100.0f) : 100;
 			if (ImGui::SliderInt("Footstep Sound Volume", &footstepVal, 0, 200, "%d%%"))
@@ -748,7 +888,7 @@ void ImGuiHelper_Draw()
 		}
 	}
 
-	if (cl_keypress_overlay && cl_keypress_overlay->value != 0.0f)
+	if (cl_keypress_overlay && cl_keypress_overlay->value != 0.0f && !g_ShowServerBrowser)
 	{
 		ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
 		bool interactive = g_ShowImGuiMenu || g_ShowCrosshairEditor || g_ShowAGSettings;
@@ -809,81 +949,494 @@ void ImGuiHelper_Draw()
 		ImGui::End();
 	}
 
+	// ── Matchmaking Modal ────────────────────────────────────────────────────
+	if (g_ShowMatchmaking)
+	{
+		// When searching: try to pick best server once list finishes loading
+		if (g_MMState == MM_SEARCHING && g_pServers && !g_pServers->IsRequesting())
+		{
+			// Score every server and find the best one
+			CHudServers::server_t* list = g_pServers->GetServersList();
+			CHudServers::server_t* best = nullptr;
+			float bestScore = -1e9f;
+
+			while (list)
+			{
+				char current[16]    = "0";
+				char maxPlayers[16] = "32";
+				char address[128]   = "";
+				char name[128]      = "";
+				char map[64]        = "";
+
+				GetInfoValue(list->info, "current", current, sizeof(current));
+				GetInfoValue(list->info, "max", maxPlayers, sizeof(maxPlayers));
+				GetInfoValue(list->info, "address", address, sizeof(address));
+				GetInfoValue(list->info, "hostname", name, sizeof(name));
+				GetInfoValue(list->info, "map", map, sizeof(map));
+
+				if (address[0] == '\0')
+					strncpy(address, gEngfuncs.pNetAPI->AdrToString(&list->remote_address), sizeof(address) - 1);
+
+				int cur  = atoi(current);
+				int maxP = atoi(maxPlayers);
+				int ping = list->ping;
+
+				// Skip servers with absurdly high ping
+				if (ping > 350) { list = list->next; continue; }
+
+				// Score: reward active servers (+players) and low ping, penalise completely full servers
+				float fillRatio = maxP > 0 ? (float)cur / (float)maxP : 0.0f;
+				float pingScore = 1.0f - (float)ping / 350.0f;         // 1.0 at 0ms, 0.0 at 350ms
+				float playerScore = fillRatio > 0.05f ? fillRatio : 0.0f; // prefer non-empty
+				float fullPenalty = fillRatio >= 0.98f ? -2.0f : 0.0f;
+				float score = pingScore * 3.0f + playerScore * 5.0f + fullPenalty;
+
+				if (score > bestScore)
+				{
+					bestScore = score;
+					best = list;
+					strncpy(g_MMBestAddress, address,  sizeof(g_MMBestAddress) - 1);
+					strncpy(g_MMBestName,    name,     sizeof(g_MMBestName)    - 1);
+					strncpy(g_MMBestMap,     map,      sizeof(g_MMBestMap)     - 1);
+					g_MMBestPing       = ping;
+					g_MMBestPlayers    = cur;
+					g_MMBestMaxPlayers = maxP;
+				}
+				list = list->next;
+			}
+
+			if (best && g_MMBestAddress[0] != '\0')
+			{
+				g_MMState = MM_FOUND;
+				g_MMConnectAt = ImGui::GetTime() + 5.0; // auto-connect after 5 seconds
+			}
+			// else: no servers yet — keep waiting (user can cancel)
+		}
+
+		// Auto-connect when timer expires
+		if (g_MMState == MM_FOUND && ImGui::GetTime() >= g_MMConnectAt)
+		{
+			g_MMState = MM_CONNECTING;
+		}
+		if (g_MMState == MM_CONNECTING && g_MMBestAddress[0] != '\0')
+		{
+			char cmd[256];
+			snprintf(cmd, sizeof(cmd), "connect %s\n", g_MMBestAddress);
+			gEngfuncs.pfnClientCmd(cmd);
+			g_ShowMatchmaking = false;
+			g_MMState = MM_IDLE;
+		}
+
+		// ── Draw the modal ────────────────────────────────────────────────────
+		float mw = 480.0f, mh = 260.0f;
+		ImGui::SetNextWindowPos(
+			ImVec2((float)ScreenWidth * 0.5f - mw * 0.5f, (float)ScreenHeight * 0.5f - mh * 0.5f),
+			ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(mw, mh), ImGuiCond_Always);
+
+		ImGui::PushStyleColor(ImGuiCol_WindowBg,    ImVec4(0.05f, 0.07f, 0.12f, 0.97f));
+		ImGui::PushStyleColor(ImGuiCol_Border,      ImVec4(0.20f, 0.35f, 0.70f, 0.80f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,  8.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.5f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,    ImVec2(28.0f, 22.0f));
+
+		if (ImGui::Begin("##Matchmaking", nullptr,
+			ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings))
+		{
+			float t = (float)ImGui::GetTime();
+			ImDrawList* dl = ImGui::GetWindowDrawList();
+			ImVec2 wpos   = ImGui::GetWindowPos();
+
+			// Thin blue accent line at top
+			dl->AddRectFilled(
+				ImVec2(wpos.x, wpos.y),
+				ImVec2(wpos.x + mw, wpos.y + 3.0f),
+				IM_COL32(60, 130, 255, 255));
+
+			// ── Title
+			ImGui::SetCursorPos(ImVec2(28.0f, 18.0f));
+			ImGui::PushFont(g_FontMedium);
+			if (g_MMState == MM_SEARCHING)
+				ImGui::TextColored(ImVec4(0.85f, 0.90f, 1.00f, 1.0f), "FINDING BEST SERVER");
+			else if (g_MMState == MM_FOUND)
+				ImGui::TextColored(ImVec4(0.30f, 0.90f, 0.50f, 1.0f), "MATCH FOUND!");
+			ImGui::PopFont();
+
+			// ── Spinner / check mark ─────────────────────────────────────────
+			ImVec2 spinCenter = ImVec2(wpos.x + mw - 50.0f, wpos.y + 38.0f);
+			if (g_MMState == MM_SEARCHING)
+			{
+				// Rotating arc
+				for (int i = 0; i < 12; i++)
+				{
+					float angle = (2.0f * 3.14159f / 12.0f) * i + t * 3.0f;
+					float alpha = (float)i / 12.0f;
+					ImVec2 p = ImVec2(spinCenter.x + cosf(angle) * 14.0f, spinCenter.y + sinf(angle) * 14.0f);
+					dl->AddCircleFilled(p, 2.5f, IM_COL32(80, 140, 255, (int)(alpha * 220)));
+				}
+			}
+			else if (g_MMState == MM_FOUND)
+			{
+				// Pulsing green circle
+				float pulse = (sinf(t * 4.0f) + 1.0f) * 0.5f;
+				dl->AddCircle(spinCenter, 14.0f, IM_COL32(50, 200, 80, (int)(100 + 155 * pulse)), 32, 2.0f);
+				dl->AddCircleFilled(spinCenter, 9.0f, IM_COL32(50, 220, 80, 200));
+				// Checkmark
+				dl->AddLine(ImVec2(spinCenter.x - 5.0f, spinCenter.y),
+				            ImVec2(spinCenter.x - 1.0f, spinCenter.y + 5.0f), IM_COL32(255,255,255,255), 2.0f);
+				dl->AddLine(ImVec2(spinCenter.x - 1.0f, spinCenter.y + 5.0f),
+				            ImVec2(spinCenter.x + 6.0f, spinCenter.y - 4.0f), IM_COL32(255,255,255,255), 2.0f);
+			}
+
+			// ── Status text ──────────────────────────────────────────────────
+			ImGui::SetCursorPos(ImVec2(28.0f, 52.0f));
+			if (g_MMState == MM_SEARCHING)
+			{
+				int dots = (int)(t * 1.5f) % 4;
+				char dotStr[5] = { 0 };
+				for (int d = 0; d < dots; d++) dotStr[d] = '.';
+
+				int count = 0;
+				if (g_pServers) { auto* l = g_pServers->GetServersList(); while (l) { count++; l = l->next; } }
+				bool loading = g_pServers && g_pServers->IsRequesting();
+
+				if (loading)
+					ImGui::TextColored(ImVec4(0.45f, 0.65f, 1.0f, 0.9f), "Scanning servers%s", dotStr);
+				else if (count == 0)
+					ImGui::TextColored(ImVec4(0.80f, 0.40f, 0.30f, 1.0f), "No servers found. Try refreshing.");
+				else
+					ImGui::TextColored(ImVec4(0.45f, 0.65f, 1.0f, 0.9f), "Evaluating %d servers%s", count, dotStr);
+			}
+			else if (g_MMState == MM_FOUND)
+			{
+				// Server details
+				ImGui::TextColored(ImVec4(0.75f, 0.85f, 1.00f, 1.0f), "%s", g_MMBestName[0] ? g_MMBestName : "Unknown Server");
+				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f);
+
+				// Ping dot
+				ImVec4 pingColor = g_MMBestPing < 60  ? ImVec4(0.20f, 0.85f, 0.35f, 1.0f) :
+				                   g_MMBestPing < 120 ? ImVec4(0.85f, 0.80f, 0.10f, 1.0f) :
+				                                        ImVec4(0.90f, 0.35f, 0.10f, 1.0f);
+				ImGui::TextColored(ImVec4(0.45f, 0.55f, 0.70f, 1.0f), "Map: ");
+				ImGui::SameLine(0.0f, 0.0f);
+				ImGui::TextColored(ImVec4(0.65f, 0.75f, 0.95f, 1.0f), "%s", g_MMBestMap[0] ? g_MMBestMap : "unknown");
+				ImGui::SameLine(0.0f, 16.0f);
+				ImGui::TextColored(ImVec4(0.45f, 0.55f, 0.70f, 1.0f), "Players: ");
+				ImGui::SameLine(0.0f, 0.0f);
+				ImGui::TextColored(ImVec4(0.70f, 0.80f, 1.0f, 1.0f), "%d/%d", g_MMBestPlayers, g_MMBestMaxPlayers);
+				ImGui::SameLine(0.0f, 16.0f);
+				ImGui::TextColored(ImVec4(0.45f, 0.55f, 0.70f, 1.0f), "Ping: ");
+				ImGui::SameLine(0.0f, 0.0f);
+				ImGui::TextColored(pingColor, "%d ms", g_MMBestPing);
+
+				// Countdown bar
+				double timeLeft = g_MMConnectAt - ImGui::GetTime();
+				if (timeLeft < 0.0) timeLeft = 0.0;
+				float frac = (float)(timeLeft / 5.0);
+				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
+				ImVec2 barPos = ImGui::GetCursorScreenPos();
+				float barW = mw - 56.0f;
+				dl->AddRectFilled(barPos, ImVec2(barPos.x + barW, barPos.y + 5.0f), IM_COL32(18, 24, 40, 220), 3.0f);
+				dl->AddRectFilled(barPos, ImVec2(barPos.x + barW * frac, barPos.y + 5.0f), IM_COL32(55, 200, 100, 220), 3.0f);
+				ImGui::Dummy(ImVec2(0.0f, 10.0f));
+				ImGui::TextColored(ImVec4(0.35f, 0.50f, 0.70f, 1.0f), "Connecting in %.0f seconds...", timeLeft > 0 ? timeLeft : 0.0);
+			}
+
+			// ── Buttons ──────────────────────────────────────────────────────
+			ImGui::SetCursorPos(ImVec2(28.0f, mh - 58.0f));
+
+			if (g_MMState == MM_FOUND)
+			{
+				ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.15f, 0.38f, 0.82f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.22f, 0.52f, 1.00f, 1.0f));
+				if (ImGui::Button("CONNECT NOW", ImVec2(150.0f, 34.0f)))
+				{
+					char cmd[256];
+					snprintf(cmd, sizeof(cmd), "connect %s\n", g_MMBestAddress);
+					gEngfuncs.pfnClientCmd(cmd);
+					g_ShowMatchmaking = false;
+					g_MMState = MM_IDLE;
+				}
+				ImGui::PopStyleColor(2);
+				ImGui::SameLine(0.0f, 10.0f);
+			}
+			else if (g_MMState == MM_SEARCHING)
+			{
+				// No servers found yet – offer a retry
+				int count = 0;
+				if (g_pServers) { auto* l = g_pServers->GetServersList(); while (l) { count++; l = l->next; } }
+				bool loading = g_pServers && g_pServers->IsRequesting();
+
+				if (!loading && count == 0)
+				{
+					if (ImGui::Button("RETRY", ImVec2(90.0f, 34.0f)))
+					{
+						if (g_pServers) g_pServers->RequestList();
+					}
+					ImGui::SameLine(0.0f, 10.0f);
+				}
+			}
+
+			ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.12f, 0.16f, 0.26f, 1.0f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.22f, 0.28f, 0.45f, 1.0f));
+			if (ImGui::Button("CANCEL", ImVec2(90.0f, 34.0f)))
+			{
+				g_ShowMatchmaking = false;
+				g_MMState = MM_IDLE;
+			}
+			ImGui::PopStyleColor(2);
+		}
+		ImGui::End();
+		ImGui::PopStyleVar(3);
+		ImGui::PopStyleColor(2);
+	}
+
 	if (g_ShowServerBrowser)
 	{
-		ImGui::SetNextWindowSize(ImVec2(800, 500), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowPos(ImVec2((float)ScreenWidth * 0.1f, (float)ScreenHeight * 0.1f), ImGuiCond_FirstUseEver);
+		// Windowed CS:GO-style server browser
+		float sbW = (float)ScreenWidth  * 0.88f;
+		float sbH = (float)ScreenHeight * 0.88f;
+		ImGui::SetNextWindowPos(
+			ImVec2((float)ScreenWidth  * 0.5f - sbW * 0.5f,
+			       (float)ScreenHeight * 0.5f - sbH * 0.5f),
+			ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(sbW, sbH), ImGuiCond_Always);
 
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.08f, 0.10f, 0.95f)); // Dark glass-like background
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
 
-		if (ImGui::Begin("Server Browser", &g_ShowServerBrowser, ImGuiWindowFlags_NoCollapse))
+		// Deep dark navy background like CS:GO matchmaking
+		ImGui::PushStyleColor(ImGuiCol_WindowBg,        ImVec4(0.04f, 0.05f, 0.07f, 0.98f));
+		ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,   ImVec4(0.07f, 0.09f, 0.13f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_TableRowBg,       ImVec4(0.05f, 0.07f, 0.10f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt,    ImVec4(0.07f, 0.09f, 0.13f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_TableBorderLight, ImVec4(0.12f, 0.16f, 0.22f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_TableBorderStrong,ImVec4(0.16f, 0.20f, 0.28f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_Header,           ImVec4(0.22f, 0.30f, 0.60f, 0.60f));
+		ImGui::PushStyleColor(ImGuiCol_HeaderHovered,    ImVec4(0.26f, 0.40f, 0.80f, 0.55f));
+		ImGui::PushStyleColor(ImGuiCol_HeaderActive,     ImVec4(0.30f, 0.50f, 1.00f, 0.65f));
+		ImGui::PushStyleColor(ImGuiCol_Button,           ImVec4(0.10f, 0.14f, 0.22f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered,    ImVec4(0.20f, 0.30f, 0.60f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive,     ImVec4(0.26f, 0.45f, 0.90f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_FrameBg,          ImVec4(0.07f, 0.09f, 0.14f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,   ImVec4(0.12f, 0.16f, 0.26f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ScrollbarBg,      ImVec4(0.03f, 0.04f, 0.06f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab,    ImVec4(0.20f, 0.30f, 0.50f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_Text,             ImVec4(0.85f, 0.90f, 1.00f, 1.00f));
+		ImGui::PushStyleColor(ImGuiCol_Separator,        ImVec4(0.12f, 0.18f, 0.30f, 1.00f));
+
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.18f, 0.28f, 0.55f, 1.00f));
+
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,   0.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,  1.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,    3.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,       ImVec2(10.0f, 6.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding,       ImVec2(10.0f, 7.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,     ImVec2(0.0f, 0.0f));
+
+		if (ImGui::Begin("##ServerBrowserWin", &g_ShowServerBrowser,
+			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBringToFrontOnFocus |
+			ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar))
 		{
-			static int activeTab = 0; // 0 = Internet, 1 = LAN
-
-			// Refresh button, loading indicator, search filter
-			if (ImGui::Button("REFRESH ALL"))
-			{
-				if (g_pServers)
-				{
-					if (activeTab == 0)
-						g_pServers->RequestList();
-					else
-						g_pServers->RequestBroadcastList(1);
-				}
-			}
-
-			ImGui::SameLine();
-			if (g_pServers && g_pServers->IsRequesting())
-			{
-				ImGui::TextColored(ImVec4(0.3f, 0.7f, 1.0f, 1.0f), "[ Refreshing servers... ]");
-			}
-			else
-			{
-				ImGui::TextDisabled("Idle");
-			}
-
-			// Local filter
-			ImGui::SameLine(ImGui::GetWindowWidth() - 320.0f);
-			ImGui::SetNextItemWidth(300.0f);
+			static int activeTab = 0;
 			static char searchFilter[128] = "";
-			ImGui::InputTextWithHint("##Filter", "Search by server name or map...", searchFilter, sizeof(searchFilter));
+			static int selectedIndex = -1;
+			static char selectedAddress[128] = "";
 
-			ImGui::Spacing();
-			ImGui::Separator();
-			ImGui::Spacing();
+			float winW = ImGui::GetWindowWidth();
+			float winH = ImGui::GetWindowHeight();
 
-			// Tabs
-			if (ImGui::Button("INTERNET", ImVec2(120, 30)))
+			// ─── HEADER ─────────────────────────────────────────────────────────
 			{
-				if (activeTab != 0)
+				// Animated scan line using time
+				float t = (float)(ImGui::GetTime());
+				float scanPhase = fmodf(t * 0.8f, 1.0f); // 0..1 loop
+
+				ImDrawList* dl = ImGui::GetWindowDrawList();
+				ImVec2 winPos = ImGui::GetWindowPos();
+
+				// Thin accent line top
+				dl->AddRectFilled(
+					ImVec2(winPos.x, winPos.y),
+					ImVec2(winPos.x + winW, winPos.y + 3.0f),
+					IM_COL32(50, 110, 230, 255)
+				);
+
+				// Header background
+				dl->AddRectFilled(
+					ImVec2(winPos.x, winPos.y + 3.0f),
+					ImVec2(winPos.x + winW, winPos.y + 72.0f),
+					IM_COL32(8, 11, 20, 255)
+				);
+
+				// Animated scan line
+				float scanX = winPos.x + scanPhase * winW;
+				dl->AddRectFilled(
+					ImVec2(scanX - 2.0f, winPos.y + 3.0f),
+					ImVec2(scanX + 80.0f, winPos.y + 72.0f),
+					IM_COL32(50, 110, 230, 18)
+				);
+
+				// Bottom separator line of header
+				dl->AddRectFilled(
+					ImVec2(winPos.x, winPos.y + 72.0f),
+					ImVec2(winPos.x + winW, winPos.y + 74.0f),
+					IM_COL32(30, 50, 100, 200)
+				);
+
+				// Title
+				ImGui::SetCursorPos(ImVec2(28.0f, 18.0f));
+				ImGui::PushFont(g_FontMedium);
+				ImGui::TextColored(ImVec4(0.85f, 0.90f, 1.00f, 1.0f), "FIND A SERVER");
+				ImGui::PopFont();
+
+				// Pulsing dot next to title (indicates activity)
+				float pulse = (sinf(t * 3.0f) + 1.0f) * 0.5f; // 0..1
+				bool isLoading = g_pServers && g_pServers->IsRequesting();
+				ImVec2 dotPos = ImVec2(winPos.x + 204.0f, winPos.y + 30.0f);
+				if (isLoading)
 				{
-					activeTab = 0;
-					if (g_pServers) g_pServers->RequestList();
+					dl->AddCircleFilled(dotPos, 5.0f, IM_COL32(80 + (int)(150 * pulse), 170 + (int)(60 * pulse), 255, 220));
+				}
+				else
+				{
+					dl->AddCircleFilled(dotPos, 5.0f, IM_COL32(60, 160, 80, 200));
+				}
+
+				// Status text
+				ImGui::SetCursorPos(ImVec2(28.0f, 42.0f));
+				if (isLoading)
+				{
+					int dotCount = ((int)(t * 2.0f) % 4);
+					char dots[5] = { 0 };
+					for (int d = 0; d < dotCount; d++) dots[d] = '.';
+					char statusStr[64];
+					snprintf(statusStr, sizeof(statusStr), "Scanning for servers%s", dots);
+					ImGui::TextColored(ImVec4(0.35f, 0.65f, 1.00f, 0.85f), "%s", statusStr);
+				}
+				else
+				{
+					int serverCount = 0;
+					if (g_pServers)
+					{
+						CHudServers::server_t* cnt = g_pServers->GetServersList();
+						while (cnt) { serverCount++; cnt = cnt->next; }
+					}
+					ImGui::TextColored(ImVec4(0.45f, 0.55f, 0.70f, 1.0f), "%d servers found", serverCount);
+				}
+
+				// Tabs — right of title
+				ImGui::SetCursorPos(ImVec2(340.0f, 22.0f));
+				{
+					bool internet = (activeTab == 0);
+					if (internet)
+						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.34f, 0.70f, 1.0f));
+					else
+						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.10f, 0.14f, 0.22f, 1.0f));
+
+					if (ImGui::Button("INTERNET", ImVec2(110.0f, 28.0f)) && activeTab != 0)
+					{
+						activeTab = 0;
+						selectedIndex = -1;
+						if (g_pServers) g_pServers->RequestList();
+					}
+					ImGui::PopStyleColor();
+					ImGui::SameLine(0.0f, 4.0f);
+
+					bool lan = (activeTab == 1);
+					if (lan)
+						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.34f, 0.70f, 1.0f));
+					else
+						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.10f, 0.14f, 0.22f, 1.0f));
+
+					if (ImGui::Button("LAN", ImVec2(70.0f, 28.0f)) && activeTab != 1)
+					{
+						activeTab = 1;
+						selectedIndex = -1;
+						if (g_pServers) g_pServers->RequestBroadcastList(1);
+					}
+					ImGui::PopStyleColor();
+				}
+
+				// REFRESH button
+				ImGui::SameLine(0.0f, 16.0f);
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.22f, 0.40f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.38f, 0.70f, 1.0f));
+				if (ImGui::Button("REFRESH", ImVec2(80.0f, 28.0f)))
+				{
+					selectedIndex = -1;
+					if (g_pServers)
+					{
+						if (activeTab == 0) g_pServers->RequestList();
+						else g_pServers->RequestBroadcastList(1);
+					}
+				}
+				ImGui::PopStyleColor(2);
+
+				// Only AG Servers toggle
+				ImGui::SameLine(0.0f, 20.0f);
+				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+				if (ImGui::Checkbox("Only AG", &g_FilterAGOnly))
+				{
+					selectedIndex = -1;
+					if (g_pServers)
+					{
+						if (activeTab == 0) g_pServers->RequestList();
+						else g_pServers->RequestBroadcastList(1);
+					}
+				}
+
+				// Search bar (top right, leave room for X button)
+				ImGui::SetCursorPos(ImVec2(winW - 330.0f, 22.0f));
+				ImGui::SetNextItemWidth(290.0f);
+				ImGui::InputTextWithHint("##SBSearch", "Search servers or maps...", searchFilter, sizeof(searchFilter));
+
+				// Close button — drawn via screen-space DrawList so it's always top-right
+				{
+					ImVec2 btnMin = ImVec2(winPos.x + winW - 34.0f, winPos.y + 8.0f);
+					ImVec2 btnMax = ImVec2(winPos.x + winW - 8.0f,  winPos.y + 34.0f);
+					bool hovered = ImGui::IsMouseHoveringRect(btnMin, btnMax);
+					if (hovered)
+						dl->AddRectFilled(btnMin, btnMax, IM_COL32(160, 30, 30, 200), 3.0f);
+					ImU32 xCol = hovered ? IM_COL32(255,255,255,255) : IM_COL32(160,170,200,200);
+					float cx = (btnMin.x + btnMax.x) * 0.5f;
+					float cy = (btnMin.y + btnMax.y) * 0.5f;
+					dl->AddLine(ImVec2(cx-5,cy-5), ImVec2(cx+5,cy+5), xCol, 2.0f);
+					dl->AddLine(ImVec2(cx+5,cy-5), ImVec2(cx-5,cy+5), xCol, 2.0f);
+					if (hovered && ImGui::IsMouseClicked(0))
+						g_ShowServerBrowser = false;
 				}
 			}
-			ImGui::SameLine();
-			if (ImGui::Button("LAN / BROADCAST", ImVec2(150, 30)))
+
+			// ─── SERVER TABLE ────────────────────────────────────────────────────
+			float tableTop = 80.0f;
+			float footerH  = 66.0f;
+			ImGui::SetCursorPos(ImVec2(8.0f, tableTop));
+
+			ImGuiTableFlags tableFlags =
+				ImGuiTableFlags_ScrollY |
+				ImGuiTableFlags_RowBg |
+				ImGuiTableFlags_BordersInnerV |
+				ImGuiTableFlags_SortMulti |
+				ImGuiTableFlags_Resizable;
+
+			if (ImGui::BeginTable("SBTable", 6, tableFlags, ImVec2(winW, winH - tableTop - footerH)))
 			{
-				if (activeTab != 1)
+				ImGui::TableSetupScrollFreeze(0, 1);
+				ImGui::TableSetupColumn("Server Name",  ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("Map",          ImGuiTableColumnFlags_WidthFixed, 160.0f);
+				ImGui::TableSetupColumn("Players",      ImGuiTableColumnFlags_WidthFixed, 110.0f);
+				ImGui::TableSetupColumn("Ping",         ImGuiTableColumnFlags_WidthFixed, 80.0f);
+				ImGui::TableSetupColumn("Bots",         ImGuiTableColumnFlags_WidthFixed, 50.0f);
+				ImGui::TableSetupColumn("Address",      ImGuiTableColumnFlags_WidthFixed, 180.0f);
+
+				// Custom header row
+				ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+				for (int col = 0; col < 6; col++)
 				{
-					activeTab = 1;
-					if (g_pServers) g_pServers->RequestBroadcastList(1);
+					ImGui::TableSetColumnIndex(col);
+					ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.55f, 0.80f, 1.0f));
+					ImGui::TextUnformatted(ImGui::TableGetColumnName(col));
+					ImGui::PopStyleColor();
 				}
-			}
-
-			ImGui::Spacing();
-
-			// Server list table
-			if (ImGui::BeginTable("ServerTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, -50)))
-			{
-				ImGui::TableSetupColumn("Server Name", ImGuiTableColumnFlags_WidthStretch);
-				ImGui::TableSetupColumn("Map", ImGuiTableColumnFlags_WidthFixed, 150.0f);
-				ImGui::TableSetupColumn("Players", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-				ImGui::TableSetupColumn("Ping", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-				ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_WidthFixed, 180.0f);
-				ImGui::TableHeadersRow();
 
 				if (g_pServers)
 				{
@@ -891,11 +1444,11 @@ void ImGuiHelper_Draw()
 					int index = 0;
 					while (list)
 					{
-						char name[128] = "";
-						char map[64] = "";
-						char current[16] = "0";
-						char maxPlayers[16] = "32";
-						char address[128] = "";
+						char name[128]      = "";
+						char map[64]        = "";
+						char current[16]    = "0";
+						char maxPlayers[16] = "0";
+						char address[128]   = "";
 
 						GetInfoValue(list->info, "hostname", name, sizeof(name));
 						GetInfoValue(list->info, "map", map, sizeof(map));
@@ -903,56 +1456,118 @@ void ImGuiHelper_Draw()
 						GetInfoValue(list->info, "max", maxPlayers, sizeof(maxPlayers));
 						GetInfoValue(list->info, "address", address, sizeof(address));
 
-						// Fallback to list->remote_address if address in info is empty
 						if (address[0] == '\0')
-						{
-							strncpy(address, gEngfuncs.pNetAPI->AdrToString(&list->remote_address), sizeof(address));
-						}
+							strncpy(address, gEngfuncs.pNetAPI->AdrToString(&list->remote_address), sizeof(address) - 1);
 
-						// Filter search
 						bool match = true;
 						if (searchFilter[0] != '\0')
-						{
 							match = (CaseInsensitiveContains(name, searchFilter) || CaseInsensitiveContains(map, searchFilter));
-						}
 
 						if (match)
 						{
 							ImGui::TableNextRow();
+							bool isSelected = (index == selectedIndex);
 
-							// Name
+							// Row highlight for selected
+							if (isSelected)
+								ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(28, 54, 110, 180));
+
+							// ── Server Name ──
 							ImGui::TableNextColumn();
-							char label[256];
-							snprintf(label, sizeof(label), "%s##row_%d", name[0] ? name : "Unnamed Server", index);
-
-							bool selected = false;
-							if (ImGui::Selectable(label, &selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick))
 							{
-								if (ImGui::IsMouseDoubleClicked(0))
+								char label[256];
+								snprintf(label, sizeof(label), "%s##sb_%d", name[0] ? name : "Unnamed Server", index);
+
+								ImGui::PushStyleColor(ImGuiCol_Header,        ImVec4(0.18f, 0.34f, 0.72f, 0.70f));
+								ImGui::PushStyleColor(ImGuiCol_HeaderHovered,  ImVec4(0.22f, 0.40f, 0.85f, 0.55f));
+
+								if (ImGui::Selectable(label, isSelected,
+									ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick,
+									ImVec2(0, 0)))
 								{
-									// Connect to server!
-									char cmd[256];
-									snprintf(cmd, sizeof(cmd), "connect %s\n", address);
-									gEngfuncs.pfnClientCmd(cmd);
-									g_ShowServerBrowser = false;
+									if (ImGui::IsMouseDoubleClicked(0))
+									{
+										char cmd[256];
+										snprintf(cmd, sizeof(cmd), "connect %s\n", address);
+										gEngfuncs.pfnClientCmd(cmd);
+										g_ShowServerBrowser = false;
+									}
+									else
+									{
+										selectedIndex = index;
+										strncpy(selectedAddress, address, sizeof(selectedAddress) - 1);
+									}
 								}
+								ImGui::PopStyleColor(2);
 							}
 
-							// Map
+							// ── Map ──
 							ImGui::TableNextColumn();
-							ImGui::Text("%s", map[0] ? map : "unknown");
+							ImGui::TextColored(ImVec4(0.65f, 0.75f, 0.95f, 1.0f), "%s", map[0] ? map : "—");
 
-							// Players
+							// ── Players (bar) ──
 							ImGui::TableNextColumn();
-							ImGui::Text("%s / %s", current, maxPlayers);
+							{
+								int cur = atoi(current);
+								int maxP = atoi(maxPlayers);
+								if (maxP <= 0) maxP = 32;
+								float frac = (float)cur / (float)maxP;
+								if (frac > 1.0f) frac = 1.0f;
 
-							// Ping
-							ImGui::TableNextColumn();
-							ImGui::Text("%d ms", list->ping);
+								// Color: green->yellow->red depending on fill
+								ImVec4 barColor;
+								if (frac < 0.5f)
+									barColor = ImVec4(0.20f + frac * 0.8f, 0.75f, 0.25f, 1.0f);
+								else if (frac < 0.85f)
+									barColor = ImVec4(0.90f, 0.75f - frac * 0.5f, 0.10f, 1.0f);
+								else
+									barColor = ImVec4(0.90f, 0.20f, 0.20f, 1.0f);
 
-							// Address
+								ImVec2 barPos = ImGui::GetCursorScreenPos();
+								float barW    = ImGui::GetContentRegionAvail().x - 2.0f;
+								float barH    = 4.0f;
+								ImDrawList* dl2 = ImGui::GetWindowDrawList();
+								// Track bg
+								dl2->AddRectFilled(barPos, ImVec2(barPos.x + barW, barPos.y + barH), IM_COL32(20, 25, 40, 200), 2.0f);
+								// Fill
+								dl2->AddRectFilled(barPos, ImVec2(barPos.x + barW * frac, barPos.y + barH),
+									IM_COL32((int)(barColor.x * 255), (int)(barColor.y * 255), (int)(barColor.z * 255), 200), 2.0f);
+
+								ImGui::Dummy(ImVec2(0.0f, barH + 2.0f));
+								char playerStr[32];
+								snprintf(playerStr, sizeof(playerStr), "%d / %d", cur, maxP);
+								ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.0f);
+								ImGui::TextColored(ImVec4(0.70f, 0.80f, 1.0f, 0.9f), "%s", playerStr);
+							}
+
+							// ── Ping (colored) ──
 							ImGui::TableNextColumn();
-							ImGui::Text("%s", address);
+							{
+								int ping = list->ping;
+								ImVec4 pingColor;
+								if (ping < 60)        pingColor = ImVec4(0.20f, 0.85f, 0.35f, 1.0f); // green
+								else if (ping < 120)  pingColor = ImVec4(0.85f, 0.80f, 0.10f, 1.0f); // yellow
+								else if (ping < 200)  pingColor = ImVec4(0.95f, 0.50f, 0.10f, 1.0f); // orange
+								else                   pingColor = ImVec4(0.90f, 0.20f, 0.20f, 1.0f); // red
+
+								ImGui::TextColored(pingColor, "%d ms", ping);
+							}
+
+							// ── Bots ──
+							ImGui::TableNextColumn();
+							{
+								char bots[16] = "0";
+								GetInfoValue(list->info, "bots", bots, sizeof(bots));
+								int botCount = atoi(bots);
+								if (botCount > 0)
+									ImGui::TextColored(ImVec4(0.60f, 0.45f, 0.20f, 1.0f), "%d", botCount);
+								else
+									ImGui::TextDisabled("—");
+							}
+
+							// ── Address ──
+							ImGui::TableNextColumn();
+							ImGui::TextColored(ImVec4(0.35f, 0.45f, 0.60f, 1.0f), "%s", address);
 						}
 
 						list = list->next;
@@ -962,18 +1577,64 @@ void ImGuiHelper_Draw()
 				ImGui::EndTable();
 			}
 
-			// Footer controls
-			ImGui::Separator();
-			ImGui::Spacing();
-			if (ImGui::Button("CLOSE", ImVec2(100, 30)))
+			// ─── FOOTER ──────────────────────────────────────────────────────────
 			{
-				g_ShowServerBrowser = false;
+				ImDrawList* dl3 = ImGui::GetWindowDrawList();
+				ImVec2 winPos2  = ImGui::GetWindowPos();
+				// Footer separator
+				dl3->AddRectFilled(
+					ImVec2(winPos2.x, winPos2.y + winH - footerH),
+					ImVec2(winPos2.x + winW, winPos2.y + winH - footerH + 2.0f),
+					IM_COL32(30, 50, 100, 180)
+				);
+				dl3->AddRectFilled(
+					ImVec2(winPos2.x, winPos2.y + winH - footerH + 2.0f),
+					ImVec2(winPos2.x + winW, winPos2.y + winH),
+					IM_COL32(5, 7, 12, 250)
+				);
+
+				ImGui::SetCursorPos(ImVec2(20.0f, winH - footerH + 16.0f));
+
+				// Connect button (only active if selection made)
+				bool hasSelection = (selectedIndex >= 0 && selectedAddress[0] != '\0');
+				if (!hasSelection)
+				{
+					ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.08f, 0.10f, 0.18f, 1.0f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.08f, 0.10f, 0.18f, 1.0f));
+					ImGui::PushStyleColor(ImGuiCol_Text,           ImVec4(0.30f, 0.35f, 0.45f, 1.0f));
+				}
+				else
+				{
+					ImGui::PushStyleColor(ImGuiCol_Button,         ImVec4(0.15f, 0.38f, 0.80f, 1.0f));
+					ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(0.22f, 0.50f, 1.00f, 1.0f));
+					ImGui::PushStyleColor(ImGuiCol_Text,           ImVec4(1.00f, 1.00f, 1.00f, 1.0f));
+				}
+
+				if (ImGui::Button("CONNECT  >", ImVec2(150.0f, 34.0f)) && hasSelection)
+				{
+					char cmd[256];
+					snprintf(cmd, sizeof(cmd), "connect %s\n", selectedAddress);
+					gEngfuncs.pfnClientCmd(cmd);
+					g_ShowServerBrowser = false;
+				}
+				ImGui::PopStyleColor(3);
+
+				ImGui::SameLine(0.0f, 14.0f);
+				ImGui::SetCursorPosY(winH - footerH + 16.0f);
+				if (hasSelection)
+					ImGui::TextColored(ImVec4(0.45f, 0.55f, 0.75f, 1.0f), "Double-click a server or press CONNECT");
+				else
+					ImGui::TextColored(ImVec4(0.25f, 0.30f, 0.42f, 1.0f), "Select a server to connect");
+
+				// ESC hint right side
+				ImGui::SetCursorPos(ImVec2(winW - 180.0f, winH - footerH + 22.0f));
+				ImGui::TextColored(ImVec4(0.25f, 0.30f, 0.42f, 1.0f), "[ ESC ] Close");
 			}
 		}
 		ImGui::End();
 
-		ImGui::PopStyleVar(2);
-		ImGui::PopStyleColor();
+		ImGui::PopStyleVar(6);
+		ImGui::PopStyleColor(19);
 	}
 
 	ImGui::Render();

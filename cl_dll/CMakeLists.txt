@@ -124,6 +124,8 @@ add_sources(
 	auto_join.h
 	damage_numbers.cpp
 	damage_numbers.h
+	spawns.cpp
+	spawns.h
 	vgui_int.cpp
 	vgui_int.h
 	vgui_MOTDWindow.cpp
@@ -141,6 +143,8 @@ add_sources(
 	vgui_UnicodeTextImage.h
 	view.cpp
 	view.h
+	weapon_sway.cpp
+	weapon_sway.h
 	voice_status.cpp
 	wrect.h
 	imgui_helper.cpp
