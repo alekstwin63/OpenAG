@@ -859,6 +859,32 @@ void ImGuiHelper_Draw()
 				{
 					gEngfuncs.Cvar_SetValue("cl_viewmodel_fov", viewmodelFovVal);
 				}
+
+				if (drawViewmodelVal)
+				{
+					ImGui::Separator();
+
+					cvar_t* pViewmodelOfsX = gEngfuncs.pfnGetCvarPointer("cl_viewmodel_ofs_right");
+					float viewmodelOfsXVal = pViewmodelOfsX ? pViewmodelOfsX->value : 0.0f;
+					if (ImGui::SliderFloat("Viewmodel X Offset (Right/Left)", &viewmodelOfsXVal, -8.0f, 8.0f, "%.1f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_viewmodel_ofs_right", viewmodelOfsXVal);
+					}
+
+					cvar_t* pViewmodelOfsY = gEngfuncs.pfnGetCvarPointer("cl_viewmodel_ofs_forward");
+					float viewmodelOfsYVal = pViewmodelOfsY ? pViewmodelOfsY->value : 0.0f;
+					if (ImGui::SliderFloat("Viewmodel Y Offset (Forward/Back)", &viewmodelOfsYVal, -8.0f, 8.0f, "%.1f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_viewmodel_ofs_forward", viewmodelOfsYVal);
+					}
+
+					cvar_t* pViewmodelOfsZ = gEngfuncs.pfnGetCvarPointer("cl_viewmodel_ofs_up");
+					float viewmodelOfsZVal = pViewmodelOfsZ ? pViewmodelOfsZ->value : 0.0f;
+					if (ImGui::SliderFloat("Viewmodel Z Offset (Up/Down)", &viewmodelOfsZVal, -8.0f, 8.0f, "%.1f"))
+					{
+						gEngfuncs.Cvar_SetValue("cl_viewmodel_ofs_up", viewmodelOfsZVal);
+					}
+				}
 			}
 
 			if (ImGui::CollapsingHeader("Spawns Display Settings"))
