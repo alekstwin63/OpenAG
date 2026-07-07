@@ -1,0 +1,9 @@
+--- cl_dll/post_process.h
++++ cl_dll/post_process.h
+@@ -4,6 +4,7 @@
+ namespace post_process
+ {
+ 	void init();
++	void capture_depth();
+ 	void draw();
+ }

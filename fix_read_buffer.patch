@@ -1,0 +1,10 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -717,6 +717,7 @@
+ 	if (bloomOn || blurOn || ssaoOn)
+ 	{
+ 		glBindTexture(GL_TEXTURE_2D, g_TexScreen);
++		glReadBuffer(GL_BACK);
+ 		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], w, h);
+ 		
+ 		if (ssaoOn) {

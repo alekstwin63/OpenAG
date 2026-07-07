@@ -1,0 +1,25 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -310,6 +310,8 @@
+ 	
+ 	// Bind depth to TMU 1
+ 	glActiveTexture(GL_TEXTURE1);
++	glEnable(GL_TEXTURE_2D);
+ 	glBindTexture(GL_TEXTURE_2D, g_TexDepth);
+ 	
+ 	// We are replacing the screen contents with the SSAO'd version
+@@ -317,9 +319,13 @@
+ 	glColor4f(1, 1, 1, 1);
++	glDisable(GL_DEPTH_TEST);
++	glDepthMask(GL_FALSE);
+ 	DrawQuadUV(0, 0, u, v);
+ 	
+ 	// Restore shader
+ 	glUseProgram(0);
+ 	
+-	// Restore TMU 0
++	// Disable TMU 1
++	glActiveTexture(GL_TEXTURE1);
++	glDisable(GL_TEXTURE_2D);
+ 	glActiveTexture(GL_TEXTURE0);
+ }

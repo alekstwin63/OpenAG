@@ -39,8 +39,7 @@
 #include "steam_id.h"
 #include "item_timers.h"
 #include "spawns.h"
-#include "bloom.h"
-#include "motion_blur.h"
+#include "post_process.h"
 
 hud_player_info_t	 g_PlayerInfoList[MAX_PLAYERS+1];	   // player info from the engine
 extra_player_info_t  g_PlayerExtraInfo[MAX_PLAYERS+1];   // additional player info sent directly to the client dll
@@ -525,8 +524,7 @@ void CHud :: Init( void )
 	damage_numbers::init();
 	auto_join::init();
 	spawns::init();
-	bloom::init();
-	motion_blur::init();
+	post_process::init();
 
 	HOOK_COMMAND( "agrecord", Agrecord );
 	HOOK_COMMAND( "append", Append );
@@ -820,6 +818,7 @@ void CHud :: VidInit( void )
 	m_Watermark.VidInit();
 	m_OldScoreBoard.VidInit();
 	GetClientVoiceMgr()->VidInit();
+	damage_numbers::reset();
 }
 
 int CHud::MsgFunc_Logo(const char *pszName, int iSize, void *pbuf)

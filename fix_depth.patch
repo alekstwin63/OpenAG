@@ -1,0 +1,10 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -685,7 +685,7 @@
+ 		if (ssaoOn) {
+ 			CheckGLError("Before SSAO copy depth");
+ 			glBindTexture(GL_TEXTURE_2D, g_TexDepth);
+-			glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], w, h);
++			// glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], w, h);
+ 			CheckGLError("After SSAO copy depth");
+ 			DrawSSAO(w, h, u, v, vp);

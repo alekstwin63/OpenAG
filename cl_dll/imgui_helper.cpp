@@ -8,6 +8,7 @@
 #include "cl_util.h"
 #include "keydefs.h"
 #include "in_buttons.h"
+#include "post_process.h"
 #include "ammo.h"
 #include "ammohistory.h"
 #include "gameui.h"
@@ -1112,68 +1113,173 @@ void ImGuiHelper_Draw()
 
 			if (ImGui::CollapsingHeader("Graphics / Post-Processing"))
 			{
+				ImGui::TextDisabled("Settings apply in real-time and are saved automatically.");
+				ImGui::Spacing();
+
+				// ── Bloom ────────────────────────────────────────────────
+				ImGui::SeparatorText("Bloom");
 				cvar_t* pBloom = gEngfuncs.pfnGetCvarPointer("cl_bloom");
 				bool bloomVal = pBloom ? (pBloom->value != 0.0f) : false;
-				if (ImGui::Checkbox("Enable Bloom Effect", &bloomVal))
-				{
+				if (ImGui::Checkbox("Enable Bloom##pp", &bloomVal))
 					gEngfuncs.Cvar_SetValue("cl_bloom", bloomVal ? 1.0f : 0.0f);
-				}
-
 				if (bloomVal)
 				{
-					cvar_t* pBloomIntensity = gEngfuncs.pfnGetCvarPointer("cl_bloom_intensity");
-					float bloomIntensityVal = pBloomIntensity ? pBloomIntensity->value : 0.5f;
-					if (ImGui::SliderFloat("Bloom Intensity", &bloomIntensityVal, 0.1f, 2.0f, "%.2f"))
-					{
-						gEngfuncs.Cvar_SetValue("cl_bloom_intensity", bloomIntensityVal);
-					}
-
-					cvar_t* pBloomRadius = gEngfuncs.pfnGetCvarPointer("cl_bloom_radius");
-					float bloomRadiusVal = pBloomRadius ? pBloomRadius->value : 2.0f;
-					if (ImGui::SliderFloat("Bloom Blur Radius", &bloomRadiusVal, 0.5f, 6.0f, "%.1f px"))
-					{
-						gEngfuncs.Cvar_SetValue("cl_bloom_radius", bloomRadiusVal);
-					}
-
-					cvar_t* pBloomDarkness = gEngfuncs.pfnGetCvarPointer("cl_bloom_darkness");
-					int bloomDarknessVal = pBloomDarkness ? (int)pBloomDarkness->value : 1;
-					if (ImGui::SliderInt("Bloom Threshold (Darkness)", &bloomDarknessVal, 0, 4, "%d"))
-					{
-						gEngfuncs.Cvar_SetValue("cl_bloom_darkness", (float)bloomDarknessVal);
-					}
+					ImGui::Indent();
+					cvar_t* pBI = gEngfuncs.pfnGetCvarPointer("cl_bloom_intensity");
+					float bi = pBI ? pBI->value : 0.6f;
+					if (ImGui::SliderFloat("Intensity##bloom", &bi, 0.1f, 2.0f, "%.2f"))
+						gEngfuncs.Cvar_SetValue("cl_bloom_intensity", bi);
+					cvar_t* pBR = gEngfuncs.pfnGetCvarPointer("cl_bloom_radius");
+					float br = pBR ? pBR->value : 3.0f;
+					if (ImGui::SliderFloat("Spread Radius##bloom", &br, 0.5f, 8.0f, "%.1f px"))
+						gEngfuncs.Cvar_SetValue("cl_bloom_radius", br);
+					cvar_t* pBT = gEngfuncs.pfnGetCvarPointer("cl_bloom_threshold");
+					int bt = pBT ? (int)pBT->value : 2;
+					if (ImGui::SliderInt("Brightness Threshold##bloom", &bt, 0, 5))
+						gEngfuncs.Cvar_SetValue("cl_bloom_threshold", (float)bt);
+					cvar_t* pBP = gEngfuncs.pfnGetCvarPointer("cl_bloom_passes");
+					int bp = pBP ? (int)pBP->value : 3;
+					if (ImGui::SliderInt("Blur Passes##bloom", &bp, 1, 6))
+						gEngfuncs.Cvar_SetValue("cl_bloom_passes", (float)bp);
+					ImGui::Unindent();
 				}
 
-				ImGui::Separator();
+				ImGui::Spacing();
 
-				cvar_t* pMotionBlur = gEngfuncs.pfnGetCvarPointer("cl_motion_blur");
-				bool motionBlurVal = pMotionBlur ? (pMotionBlur->value != 0.0f) : false;
-				if (ImGui::Checkbox("Enable Motion Blur", &motionBlurVal))
+				// ── Motion Blur ──────────────────────────────────────────
+				ImGui::SeparatorText("Motion Blur");
+				cvar_t* pMB = gEngfuncs.pfnGetCvarPointer("cl_motion_blur");
+				bool mbVal = pMB ? (pMB->value != 0.0f) : false;
+				if (ImGui::Checkbox("Enable Motion Blur##pp", &mbVal))
+					gEngfuncs.Cvar_SetValue("cl_motion_blur", mbVal ? 1.0f : 0.0f);
+				if (mbVal)
 				{
-					gEngfuncs.Cvar_SetValue("cl_motion_blur", motionBlurVal ? 1.0f : 0.0f);
+					ImGui::Indent();
+					cvar_t* pSh = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_shutter");
+					float sv = pSh ? pSh->value : 0.015f;
+					if (ImGui::SliderFloat("Shutter Speed##mb", &sv, 0.003f, 0.05f, "%.3f s"))
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_shutter", sv);
+					cvar_t* pAl = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_alpha");
+					float av = pAl ? pAl->value : 0.10f;
+					if (ImGui::SliderFloat("Sample Opacity##mb", &av, 0.01f, 0.30f, "%.2f"))
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_alpha", av);
+					cvar_t* pMx = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_max");
+					float mv = pMx ? pMx->value : 25.f;
+					if (ImGui::SliderFloat("Max Offset##mb", &mv, 5.f, 80.f, "%.0f px"))
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_max", mv);
+					cvar_t* pCh = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_chromatic");
+					float cv = pCh ? pCh->value : 0.0f;
+					if (ImGui::SliderFloat("Chromatic Aberration##mb", &cv, 0.0f, 3.0f, "%.1f"))
+						gEngfuncs.Cvar_SetValue("cl_motion_blur_chromatic", cv);
+					ImGui::Unindent();
 				}
 
-				if (motionBlurVal)
+				ImGui::Spacing();
+
+				// ── Vignette ─────────────────────────────────────────────
+				ImGui::SeparatorText("Vignette");
+				cvar_t* pVig = gEngfuncs.pfnGetCvarPointer("cl_vignette");
+				bool vigVal = pVig ? (pVig->value != 0.0f) : false;
+				if (ImGui::Checkbox("Enable Vignette##pp", &vigVal))
+					gEngfuncs.Cvar_SetValue("cl_vignette", vigVal ? 1.0f : 0.0f);
+				if (vigVal)
 				{
-					cvar_t* pMotionBlurShutter = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_shutter");
-					float motionBlurShutterVal = pMotionBlurShutter ? pMotionBlurShutter->value : 0.015f;
-					if (ImGui::SliderFloat("Camera Shutter Speed", &motionBlurShutterVal, 0.005f, 0.05f, "%.3f sec"))
+					ImGui::Indent();
+					cvar_t* pVS = gEngfuncs.pfnGetCvarPointer("cl_vignette_strength");
+					float vs = pVS ? pVS->value : 0.75f;
+					if (ImGui::SliderFloat("Strength##vig", &vs, 0.05f, 1.0f, "%.2f"))
+						gEngfuncs.Cvar_SetValue("cl_vignette_strength", vs);
+					cvar_t* pVR = gEngfuncs.pfnGetCvarPointer("cl_vignette_radius");
+					float vr = pVR ? pVR->value : 0.65f;
+					if (ImGui::SliderFloat("Inner Radius##vig", &vr, 0.2f, 1.2f, "%.2f"))
+						gEngfuncs.Cvar_SetValue("cl_vignette_radius", vr);
+					cvar_t* pVSo = gEngfuncs.pfnGetCvarPointer("cl_vignette_softness");
+					float vso = pVSo ? pVSo->value : 0.45f;
+					if (ImGui::SliderFloat("Softness##vig", &vso, 0.05f, 1.0f, "%.2f"))
+						gEngfuncs.Cvar_SetValue("cl_vignette_softness", vso);
+					ImGui::Unindent();
+				}
+
+				ImGui::Spacing();
+
+				// ── Film Grain ───────────────────────────────────────────
+				ImGui::SeparatorText("Film Grain");
+				cvar_t* pGrain = gEngfuncs.pfnGetCvarPointer("cl_film_grain");
+				bool grainVal = pGrain ? (pGrain->value != 0.0f) : false;
+				if (ImGui::Checkbox("Enable Film Grain##pp", &grainVal))
+					gEngfuncs.Cvar_SetValue("cl_film_grain", grainVal ? 1.0f : 0.0f);
+				if (grainVal)
+				{
+					ImGui::Indent();
+					cvar_t* pGA = gEngfuncs.pfnGetCvarPointer("cl_film_grain_amount");
+					float ga = pGA ? pGA->value : 0.04f;
+					if (ImGui::SliderFloat("Amount##grain", &ga, 0.005f, 0.20f, "%.3f"))
+						gEngfuncs.Cvar_SetValue("cl_film_grain_amount", ga);
+					ImGui::Unindent();
+				}
+
+				ImGui::Spacing();
+
+// ── SSAO ─────────────────────────────────────────────────
+				ImGui::SeparatorText("Screen Space Ambient Occlusion");
+				cvar_t* pSSAO = gEngfuncs.pfnGetCvarPointer("cl_ssao");
+				bool ssaoVal = pSSAO ? (pSSAO->value != 0.0f) : false;
+				if (ImGui::Checkbox("Enable SSAO##pp", &ssaoVal))
+					gEngfuncs.Cvar_SetValue("cl_ssao", ssaoVal ? 1.0f : 0.0f);
+
+				if (ssaoVal)
+				{
+					ImGui::Indent();
+					
+					// Ползунок радиуса
+					cvar_t* pSSAORad = gEngfuncs.pfnGetCvarPointer("cl_ssao_radius");
+					float ssaoRad = pSSAORad ? pSSAORad->value : 8.0f;
+					if (ImGui::SliderFloat("Shadow Radius##ssao", &ssaoRad, 1.0f, 20.0f, "%.1f"))
+						gEngfuncs.Cvar_SetValue("cl_ssao_radius", ssaoRad);
+						
+					// Ползунок интенсивности
+					cvar_t* pSSAOInt = gEngfuncs.pfnGetCvarPointer("cl_ssao_intensity");
+					float ssaoInt = pSSAOInt ? pSSAOInt->value : 1.2f;
+					if (ImGui::SliderFloat("Intensity##ssao", &ssaoInt, 0.1f, 5.0f, "%.2f"))
+						gEngfuncs.Cvar_SetValue("cl_ssao_intensity", ssaoInt);
+						
+					ImGui::Spacing();
+					
+					// Прячем техническую информацию в спойлер, чтобы не засорять меню
+					if (ImGui::TreeNode("Diagnostics (Depth Debug)"))
 					{
-						gEngfuncs.Cvar_SetValue("cl_motion_blur_shutter", motionBlurShutterVal);
+						const auto& dbg = post_process::get_depth_debug();
+
+						// Status
+						if (!dbg.capture_attempted) {
+							ImGui::TextColored(ImVec4(1,1,0,1), "Not capturing (waiting for first frame)");
+						} else if (dbg.capture_succeeded) {
+							// Добавлен "MSAA Blit" под индексом 4
+							const char* methods[] = { "None", "glReadPixels(FLOAT)", "glReadPixels(UINT)", "glCopyTexSubImage2D", "MSAA Blit" };
+							int methodIdx = (dbg.method_used >= 0 && dbg.method_used <= 4) ? dbg.method_used : 0;
+							ImGui::TextColored(ImVec4(0,1,0,1), "OK: %s", methods[methodIdx]);
+						} else {
+							ImGui::TextColored(ImVec4(1,0,0,1), "FAILED! GL error: 0x%X", dbg.gl_error);
+						}
+
+						ImGui::Text("Viewport: %d x %d", dbg.viewport_w, dbg.viewport_h);
+						ImGui::Text("Frames captured: %d", dbg.frame_count);
+
+						if (dbg.capture_succeeded && dbg.center_depth >= 0.0f) {
+							ImGui::Text("Center depth: %.6f", dbg.center_depth);
+							ImGui::Spacing();
+							ImGui::Text("3x3 depth grid (center +/- 40px):");
+							for (int row = 2; row >= 0; row--) {
+								ImGui::Text("  %.4f  %.4f  %.4f",
+									dbg.sample_depths[row*3+0],
+									dbg.sample_depths[row*3+1],
+									dbg.sample_depths[row*3+2]);
+							}
+						}
+						ImGui::TreePop();
 					}
 
-					cvar_t* pMotionBlurAlpha = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_alpha");
-					float motionBlurAlphaVal = pMotionBlurAlpha ? pMotionBlurAlpha->value : 0.12f;
-					if (ImGui::SliderFloat("Blur Trail Opacity (Alpha)", &motionBlurAlphaVal, 0.01f, 0.25f, "%.2f"))
-					{
-						gEngfuncs.Cvar_SetValue("cl_motion_blur_alpha", motionBlurAlphaVal);
-					}
-
-					cvar_t* pMotionBlurChromatic = gEngfuncs.pfnGetCvarPointer("cl_motion_blur_chromatic");
-					float motionBlurChromaticVal = pMotionBlurChromatic ? pMotionBlurChromatic->value : 0.0f;
-					if (ImGui::SliderFloat("Chromatic Aberration (Fringing)", &motionBlurChromaticVal, 0.0f, 3.0f, "%.1f px"))
-					{
-						gEngfuncs.Cvar_SetValue("cl_motion_blur_chromatic", motionBlurChromaticVal);
-					}
+					ImGui::Unindent();
 				}
 			}
 

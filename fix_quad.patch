@@ -1,0 +1,16 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -340,7 +340,12 @@
+ 	glDisable(GL_DEPTH_TEST);
+ 	glDepthMask(GL_FALSE);
+ 	glColor4f(1, 1, 1, 1);
+-	DrawQuadUV(0, 0, u, v);
++	glBegin(GL_QUADS);
++	glTexCoord2f(0, v); glVertex3f(0,   0,   0);
++	glTexCoord2f(u, v); glVertex3f(w,   0,   0);
++	glTexCoord2f(u, 0); glVertex3f(w,   h,   0);
++	glTexCoord2f(0, 0); glVertex3f(0,   h,   0);
++	glEnd();
+ 	CheckGLError("DrawSSAO - DrawQuadUV");
+ 	
+ 	// Restore shader

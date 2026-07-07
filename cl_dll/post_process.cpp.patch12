@@ -1,0 +1,11 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -1,5 +1,7 @@
+ // post_process.cpp — Unified post-processing pipeline for OpenAG
+-// Fixed-function//  OpenGL Extensions & Globals
++// Fixed-function OpenGL 2.x (no GLSL).
++//
++// ==============================================================================
+ // ==============================================================================
+ 
+ static void CheckGLError(const char* context) {

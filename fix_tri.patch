@@ -1,0 +1,17 @@
+--- cl_dll/tri.cpp
++++ cl_dll/tri.cpp
+@@ -19,6 +19,7 @@
+ #include "com_weapons.h"
+ #include "hud_iface.h"
+ #include "Exports.h"
++#include "post_process.h"
+ 
+ #include "cl_util.h"
+ #include "r_efx.h"
+@@ -169,6 +170,8 @@
+ 	DrawServerTriggers();
+ 
+ 	gEngfuncs.pTriAPI->RenderMode(kRenderNormal);
++	
++	post_process::capture_depth();
+ }

@@ -1,0 +1,41 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -699,6 +699,23 @@
+ 	glActiveTexture(GL_TEXTURE0);
+ }
+ 
++void capture_depth()
++{
++	if (!cl_ssao || cl_ssao->value == 0.0f) return;
++	GLint vp[4];
++	glGetIntegerv(GL_VIEWPORT, vp);
++	int w = vp[2], h = vp[3];
++	if (w <= 0 || h <= 0) return;
++	if (g_DepthW != w || g_DepthH != h) {
++		if (g_DepthData) delete[] g_DepthData;
++		g_DepthData = new GLfloat[w * h];
++		g_DepthW = w; g_DepthH = h;
++	}
++	glReadPixels(vp[0], vp[1], w, h, GL_DEPTH_COMPONENT, GL_FLOAT, g_DepthData);
++	if (!g_TexDepth) return;
++	glBindTexture(GL_TEXTURE_2D, g_TexDepth);
++	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_DEPTH_COMPONENT, GL_FLOAT, g_DepthData);
++}
+ 
+ void draw()
+ {
+@@ -730,13 +747,6 @@
+ 		
+ 		if (ssaoOn) {
+ 			CheckGLError("Before SSAO copy depth");
+-			glBindTexture(GL_TEXTURE_2D, g_TexDepth);
+-			if (g_DepthW != w || g_DepthH != h) {
+-				if (g_DepthData) delete[] g_DepthData;
+-				g_DepthData = new GLfloat[w * h];
+-				g_DepthW = w; g_DepthH = h;
+-			}
+-			glReadPixels(vp[0], vp[1], w, h, GL_DEPTH_COMPONENT, GL_FLOAT, g_DepthData);
+-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_DEPTH_COMPONENT, GL_FLOAT, g_DepthData);
+ 			CheckGLError("After SSAO copy depth");
+ 			DrawSSAO(w, h, u, v, vp);
+ 			// Update g_TexScreen with the AO'd screen so that bloom/motion blur use the AO'd version

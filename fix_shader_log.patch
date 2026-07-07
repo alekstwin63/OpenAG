@@ -1,0 +1,13 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -206,6 +206,10 @@
+ 	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+ 	if (!status) {
+ 		gEngfuncs.Con_Printf("Failed to compile shader\n");
++		char infoLog[1024];
++		GLsizei len;
++		glGetShaderInfoLog(shader, sizeof(infoLog), &len, infoLog);
++		gEngfuncs.Con_Printf("Shader InfoLog: %s\n", infoLog);
+ 		return 0;
+ 	}
+ 	return shader;

@@ -126,10 +126,8 @@ add_sources(
 	damage_numbers.h
 	spawns.cpp
 	spawns.h
-	bloom.cpp
-	bloom.h
-	motion_blur.cpp
-	motion_blur.h
+	post_process.cpp
+	post_process.h
 	vgui_int.cpp
 	vgui_int.h
 	vgui_MOTDWindow.cpp

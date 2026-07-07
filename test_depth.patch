@@ -1,0 +1,11 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -237,7 +237,7 @@
+ 			"  float diff = sample_d - depth;\n"
+ 			"  if (diff > 0.0005 && diff < 0.02) ao -= 0.15;\n"
+ 			"}\n"
+-			"gl_FragColor = vec4(col.rgb * ao, col.a);\n"
++			"gl_FragColor = vec4(vec3(pow(raw_depth, 64.0)), 1.0);\n" // Output depth buffer
+ 			"}\n"
+ 		};
+ 

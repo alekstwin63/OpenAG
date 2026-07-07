@@ -1,0 +1,46 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -10,6 +10,7 @@
+ #include <cmath>
+ #include "hud.h"
+ #include "cl_util.h"
++#include <SDL2/SDL.h>
+ #include <SDL2/SDL_opengl.h>
+ 
+ extern int g_iVideoMode; // 0 = Software, 1 = OpenGL, 2 = D3D
+@@ -29,6 +30,17 @@
+ static int g_LastW = 0;
+ static int g_LastH = 0;
+ 
++// FBO pointers
++static PFNGLGENFRAMEBUFFERSEXTPROC glGenFramebuffersEXT = nullptr;
++static PFNGLBINDFRAMEBUFFEREXTPROC glBindFramebufferEXT = nullptr;
++static PFNGLFRAMEBUFFERTEXTURE2DEXTPROC glFramebufferTexture2DEXT = nullptr;
++
++#ifndef GL_FRAMEBUFFER_EXT
++#define GL_FRAMEBUFFER_EXT 0x8D40
++#endif
++#ifndef GL_COLOR_ATTACHMENT0_EXT
++#define GL_COLOR_ATTACHMENT0_EXT 0x8CE0
++#endif
++static GLuint g_FBO = 0;
++
+ static bool g_bEnable = true;
+ 
+ static cvar_t* cl_bloom_passes = nullptr;
+@@ -139,6 +151,15 @@
+ 	if (g_TexScreen && g_LastW == w && g_LastH == h)
+ 		return;
+ 
++	if (!glGenFramebuffersEXT) {
++		glGenFramebuffersEXT = (PFNGLGENFRAMEBUFFERSEXTPROC)SDL_GL_GetProcAddress("glGenFramebuffersEXT");
++		glBindFramebufferEXT = (PFNGLBINDFRAMEBUFFEREXTPROC)SDL_GL_GetProcAddress("glBindFramebufferEXT");
++		glFramebufferTexture2DEXT = (PFNGLFRAMEBUFFERTEXTURE2DEXTPROC)SDL_GL_GetProcAddress("glFramebufferTexture2DEXT");
++	}
++	if (!g_FBO && glGenFramebuffersEXT) {
++		glGenFramebuffersEXT(1, &g_FBO);
++	}
++
+ 	int tw = NextPOT(w), th = NextPOT(h);
+ 	MakeTexture(g_TexScreen, tw, th);
+ 	if (!g_TexBloom[0]) MakeTexture(g_TexBloom[0], 512, 512);

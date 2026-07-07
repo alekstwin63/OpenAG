@@ -41,15 +41,28 @@ This document serves as a comprehensive architectural map and technical guide fo
 
 ## 4. Technical Details of Custom Additions
 
-### 1. Refined Directional Motion Blur
-- **Files**: [motion_blur.cpp](file:///home/angel/OpenAG/cl_dll/motion_blur.cpp) & [motion_blur.h](file:///home/angel/OpenAG/cl_dll/motion_blur.h)
-- **Cvars**: `cl_motion_blur`, `cl_motion_blur_shutter`, `cl_motion_blur_alpha`, `cl_motion_blur_chromatic`.
+### 1. Unified Post-Processing Pipeline
+- **Files**: [post_process.cpp](file:///home/angel/OpenAG/cl_dll/post_process.cpp) & [post_process.h](file:///home/angel/OpenAG/cl_dll/post_process.h)
+- **Cvars**: 
+  - Bloom: `cl_bloom`, `cl_bloom_intensity`, `cl_bloom_radius`, `cl_bloom_threshold`, `cl_bloom_passes`.
+  - Motion Blur: `cl_motion_blur`, `cl_motion_blur_shutter`, `cl_motion_blur_alpha`, `cl_motion_blur_max`, `cl_motion_blur_chromatic`.
+  - Vignette: `cl_vignette`, `cl_vignette_strength`, `cl_vignette_radius`, `cl_vignette_softness`.
+  - Film Grain: `cl_film_grain`, `cl_film_grain_amount`.
+  - SSAO (Screen Space Ambient Occlusion): `cl_ssao`, `cl_ssao_radius`, `cl_ssao_intensity` *(Stage: Depth Capture Diagnostics)*.
 - **Architecture**:
-  - Automatically captures the frame buffer into a texture at the end of scene rendering.
-  - In the subsequent frame, it calculates the camera's angular velocity vector ($\Delta\text{Pitch}$, $\Delta\text{Yaw}$).
-  - Computes 4 offset samples (2 forward, 2 backward) along the velocity vector.
-  - Blends these offsets as semi-transparent screen-space overlays (`cl_motion_blur_alpha`) on top of the original unshifted frame.
-  - **OpenGL Safety**: Employs attributes pushing/popping (`glPushAttrib(GL_ALL_ATTRIB_BITS)`, `glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS)`) to avoid corrupting engine state.
+  - Implements a unified render-pass stack (SSAO → Bloom → Motion Blur → Vignette → Film Grain) using fixed-function OpenGL 2.x.
+  - Captures the clean 3D scene framebuffer exactly *once* per frame into `g_TexScreen` to prevent feedback loops/exponential ghosting buildup.
+  - **SSAO (Screen Space Ambient Occlusion) [Current Stage: Depth Diagnostics]**: 
+    - **Status**: SSAO shader exists but is blocked on reliable depth buffer capture. Currently in diagnostic mode to determine which GL depth-read method works on the target driver.
+    - **Depth Capture (`capture_depth()` in `post_process.cpp`)**: Called from `HUD_DrawTransparentTriangles` (in `tri.cpp`). **NOT** `HUD_DrawNormalTriangles` — by that point the engine has already cleared the depth buffer (all values read as 1.0). The transparent pass runs earlier in the 3D render while scene depth is still populated. `glReadPixels(GL_FLOAT)` works on this driver (confirmed via debug panel, no GL error), but returns 1.0 everywhere from the Normal hook — moved to Transparent hook to get real geometry depth values.
+    - **ImGui Debug Panel**: Located in AG Settings → Graphics / Post-Processing → "SSAO (Depth Debug)". Shows capture method, GL errors, center depth value, and 3×3 depth grid around screen center.
+    - **Known Issue**: GoldSrc's default framebuffer state causes `glReadPixels(GL_DEPTH_COMPONENT)` to fail with `GL_INVALID_OPERATION` (0x502) on some drivers. The diagnostic panel identifies which method works to unblock SSAO shader development.
+    - **Critical GL State Rule**: `capture_depth()` must NOT call `InitTextures()` or modify engine GL state (texture bindings, shaders, FBOs) — it runs mid-3D-render-pass. All texture bindings are saved/restored via `glGetIntegerv(GL_TEXTURE_BINDING_2D)`.
+  - **Bloom**: Downsamples scene to 512x512, applies multiplicative thresholding to isolate highlights, performs iterative Gaussian-like ping-pong blur, and blends additively. Overwritten bottom-left screen regions are cleanly restored from `g_TexScreen`.
+  - **Motion Blur**: Blends 6 shifted transparent copies of `g_TexScreen` along the camera's angular velocity vector ($\Delta\text{Pitch}$, $\Delta\text{Yaw}$) calculated from frame time delta. Features optional chromatic aberration (RGB split).
+  - **Vignette**: Renders a circular aspect-corrected darkening overlay using a smooth $100 \times 100$ quad vertex grid with per-vertex alpha calculated via `smoothstep`.
+  - **Film Grain**: Renders animated screen noise at 1/4 pixel resolution using a fast LCG randomizer.
+  - **OpenGL Safety**: Employs attributes pushing/popping (`glPushAttrib(GL_ALL_ATTRIB_BITS)`) to avoid corrupting engine state.
 
 ### 2. Speedometer, Strafe Analyzer & Key Overlay
 - **Files**: [hud_strafeguide.h](file:///home/angel/OpenAG/cl_dll/hud_strafeguide.h), [hud_strafeguide.cpp](file:///home/angel/OpenAG/cl_dll/hud_strafeguide.cpp), & [imgui_helper.cpp](file:///home/angel/OpenAG/cl_dll/imgui_helper.cpp)
@@ -74,7 +87,22 @@ This document serves as a comprehensive architectural map and technical guide fo
   - `CStudioModelRenderer::SetViewmodelFovProjection` (in `StudioModelRenderer.cpp`) dynamically scales projection matrices for weapon models during rendering when `cl_viewmodel_fov` is non-zero.
   - Added full configuration sliders to the "FOV & Viewmodel Settings" ImGui panel.
 
-### 4. Spawn Points Display System
+### 4. Gauss Predicted Damage Numbers
+- **Files**: [ev_hldm.cpp](file:///home/angel/OpenAG/cl_dll/ev_hldm.cpp) & [damage_numbers.cpp](file:///home/angel/OpenAG/cl_dll/damage_numbers.cpp)
+- **Architecture**:
+  - Implements instant client-side predicted damage numbers display for the Gauss gun (Tau Cannon) inside `EV_FireGauss` when hit traces strike a player entity.
+  - Correctly calls `EV_GetPhysent` *before* `EV_PopPMStates()` so that player physics entities are preserved when checking hit targets during prediction on remote servers.
+  - Differentiates between primary fire (`20` damage) and charged secondary fire (`flDamage` up to `200`). Utilizes a `bShowedDamage` check per frame trace to avoid double-displaying damage numbers when the piercing beam loops through a player model.
+  - Clears prediction state correctly on map/server change using `damage_numbers::reset()`.
+
+### 5. Persistent Projectile Owner Damage Attribution (Server)
+- **Files**: [weapons.h](file:///home/angel/OpenAG/dlls/weapons.h), [rpg.cpp](file:///home/angel/OpenAG/dlls/rpg.cpp), [ggrenade.cpp](file:///home/angel/OpenAG/dlls/ggrenade.cpp), [crossbow.cpp](file:///home/angel/OpenAG/dlls/crossbow.cpp), [satchel.cpp](file:///home/angel/OpenAG/dlls/satchel.cpp)
+- **Architecture**:
+  - Fixes the classic GoldSrc engine bug where physical projectile weapons (RPG Rockets, MP5 Grenades, Satchels, Hand Grenades, Crossbow Bolts) occasionally fail to attribute damage or kill credits to the attacker because the engine clears `pev->owner` upon direct collision impacts.
+  - Introduces `EHANDLE m_hThrower` inside the base `CGrenade` class to store a persistent reference to the launching player. All damage-inflicting explosion routines retrieve the attacker from `m_hThrower` instead of `pev->owner`.
+  - All EHANDLE logic uses preprocessor checks `#ifndef CLIENT_DLL` to ensure smooth compilation in both the server library (`hl.so`) and client prediction routines (`client.so`).
+
+### 6. Spawn Points Display System
 - **Files**: [spawns.cpp](file:///home/angel/OpenAG/cl_dll/spawns.cpp), [spawns.h](file:///home/angel/OpenAG/cl_dll/spawns.h)
 - **Cvars**: `cl_show_spawns`, `cl_show_spawns_only_active`, `cl_show_spawns_dist`.
 - **Architecture**:
@@ -82,14 +110,14 @@ This document serves as a comprehensive architectural map and technical guide fo
   - Dynamically updates active player coordinates to highlight active and cooldown spawn points.
   - Renders 3D boxes/positions at coordinates in the game world utilizing OpenGL drawing pipelines (`gEngfuncs.pTriangleAPI`).
 
-### 5. HL2-style Weapon Sway (Bobbing)
+### 7. HL2-style Weapon Sway (Bobbing)
 - **Files**: [weapon_sway.cpp](file:///home/angel/OpenAG/cl_dll/weapon_sway.cpp), [weapon_sway.h](file:///home/angel/OpenAG/cl_dll/weapon_sway.h)
 - **Cvars**: `cl_weapon_sway`, `cl_weapon_sway_pitch`, `cl_weapon_sway_yaw`, `cl_weapon_sway_roll`, `cl_weapon_sway_clamp`, `cl_weapon_sway_roll_factor`, `cl_weapon_sway_pos_yaw`, `cl_weapon_sway_pos_pitch`.
 - **Architecture**:
   - Interpolates and smooths weapon model alignment angles relative to the player's view rotation rates.
   - Simulates dynamic weapon drag, roll rotation, and sway displacement.
 
-### 6. AG Online Player Count Overlay
+### 8. AG Online Player Count Overlay
 - **Files**: [imgui_helper.cpp](file:///home/angel/OpenAG/cl_dll/imgui_helper.cpp)
 - **Architecture**:
   - Designed to run when the player is in the main menu (`g_pGameUI->IsGameUIVisible()`).
@@ -118,3 +146,33 @@ cp build/client.so /mnt/Trash/@home/angeloo123/Games/steamapps/common/Half-Life/
 1. **Preserve Engine State**: GoldSrc uses a single-threaded OpenGL pipeline. Whenever writing raw OpenGL commands (like inside `motion_blur.cpp`), always push current state matrices and client attributes, and pop them immediately after finishing.
 2. **CVar Lookups**: All CVars registered by other files must be accessed using `gEngfuncs.pfnGetCvarPointer("cvar_name")`. Ensure pointers are null-checked before accessing `->value` or `->string`.
 3. **ImGui HUD Rendering**: All HUD overlays (speedometer, online player count, health/armor) must use `hud_flags` containing `ImGuiWindowFlags_NoInputs` to prevent blocking mouse look and movements in-game.
+
+---
+
+## 6. SSAO Depth Capture Troubleshooting Context (For External AI Analysis)
+
+If you are feeding this project to an external AI to solve the SSAO depth capture issue, here is the exact context of the problem:
+
+### The Goal
+We want to extract the 3D scene depth buffer (Z-buffer) in a client-side OpenGL mod for Half-Life (GoldSrc engine) to feed into a custom Screen Space Ambient Occlusion (SSAO) shader.
+
+### The Problem
+Currently, any attempt to read depth via `glReadPixels(..., GL_DEPTH_COMPONENT, ...)` or GPU copy via `glCopyTexSubImage2D` returns `1.0` (far plane / cleared depth) across the entire screen, even when looking directly at walls, players, or nearby geometry. 
+
+### What We Have Tried & Discovered
+1. **Calling `capture_depth()` in `HUD_DrawNormalTriangles`**:
+   - Depth is always `1.0`.
+   - Reason: The engine has already finished rendering the 3D scene and cleared the depth buffer before drawing 2D HUD elements and overlays.
+2. **Calling `capture_depth()` in `HUD_DrawTransparentTriangles` (in `tri.cpp`)**:
+   - This hook runs earlier during the 3D scene rendering pass.
+   - However, depth still reads as `1.0` everywhere. 
+   - No OpenGL errors (like `GL_INVALID_OPERATION` 0x502) are triggered. The driver successfully executes the read, but the buffer itself only contains `1.0`.
+3. **OpenGL Driver Diagnostics**:
+   - We implemented a diagnostic panel in ImGui ("SSAO (Depth Debug)").
+   - It verifies that `glReadPixels(..., GL_DEPTH_COMPONENT, GL_FLOAT, ...)` executes successfully (returns `GL_NO_ERROR`), but the depth values in the 3x3 grid around the center are always exactly `1.0000`.
+
+### Key Questions to Solve
+- Why is the depth buffer already cleared/empty (filled with `1.0`) during `HUD_DrawTransparentTriangles`?
+- Is there a more appropriate rendering hook in the GoldSrc client library (e.g., in `StudioModelRenderer.cpp`, `view.cpp` / `V_CalcRefdef`, or custom tri API hooks) where the depth buffer still holds the opaque world/player geometry?
+- Is the engine rendering to a custom Framebuffer Object (FBO) or a separate context/renderbuffer, and if so, how can we bind/query it to read its depth attachment?
+- Does the engine disable depth writes or change the depth function (`glDepthMask`, `glDepthFunc`) during certain passes, causing the read to fail or return default cleared values?

@@ -1,0 +1,14 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -171,7 +171,9 @@
+ 
+ 	// Step 1: Draw downscaled clean frame into bottom-left 512x512
+-	glViewport(0, 0, 512, 512);
++	int scratch_w = (w < 512) ? w : 512;
++	int scratch_h = (h < 512) ? h : 512;
++	glViewport(vp[0], vp[1], scratch_w, scratch_h);
+ 	glBindTexture(GL_TEXTURE_2D, g_TexScreen);
+ 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+ 	glDisable(GL_BLEND);
+ 	glColor4f(1,1,1,1);
+ 	DrawQuadUV(0, 0, u, v);

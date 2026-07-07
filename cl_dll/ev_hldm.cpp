@@ -923,6 +923,9 @@ void EV_FireGauss( event_args_t *args )
 
 	gEngfuncs.pEventAPI->EV_PlaySound( idx, origin, CHAN_WEAPON, "weapons/gauss2.wav", 0.5 + flDamage * (1.0 / 400.0), ATTN_NORM, 0, 85 + gEngfuncs.pfnRandomLong( 0, 0x1f ) );
 
+	// Only show predicted damage once per shot - beam loops through player multiple times
+	bool bShowedDamage = false;
+
 	while (flDamage > 10 && nMaxHits > 0)
 	{
 		nMaxHits--;
@@ -938,18 +941,24 @@ void EV_FireGauss( event_args_t *args )
 		gEngfuncs.pEventAPI->EV_SetTraceHull( 2 );
 		gEngfuncs.pEventAPI->EV_PlayerTrace( vecSrc, vecDest, PM_STUDIO_BOX, -1, &tr );
 
-		gEngfuncs.pEventAPI->EV_PopPMStates();
-
-		if ( tr.fraction < 1.0 )
+		// IMPORTANT: EV_GetPhysent must be called BEFORE PopPMStates,
+		// otherwise the physent array is restored and tr.ent points to wrong entity
+		if ( !bShowedDamage && tr.fraction < 1.0 )
 		{
-			physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent ); 
+			physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent );
 			if ( pe && pe->solid != SOLID_BSP && pe->player && EV_IsLocal( idx ) )
 			{
 				bool is_head = (tr.hitgroup == 1);
 				int dmg = m_fPrimaryFire ? 20 : (int)flDamage;
 				damage_numbers::add_predicted_damage(tr.endpos, dmg, is_head);
+				bShowedDamage = true;
 			}
 		}
+
+		// Also cache pEntity (used later for BSP wall logic) BEFORE pop
+		pEntity = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent );
+
+		gEngfuncs.pEventAPI->EV_PopPMStates();
 
 		if ( tr.allsolid )
 			break;
@@ -997,7 +1006,6 @@ void EV_FireGauss( event_args_t *args )
 			);
 		}
 
-		pEntity = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent );
 		if ( pEntity == NULL )
 			break;
 

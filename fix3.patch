@@ -1,0 +1,23 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -21,10 +21,2 @@
+ 
+-static void CheckGLError(const char* context) {
+-	GLenum err;
+-	while ((err = glGetError()) != GL_NO_ERROR) {
+-		gEngfuncs.Con_Printf("OpenGL Error in %s: 0x%X\n", context, err);
+-	}
+-}
+-
+-
+ #ifndef GL_TEXTURE0
+@@ -36,2 +28,9 @@
+ 
++static void CheckGLError(const char* context) {
++	GLenum err;
++	while ((err = glGetError()) != GL_NO_ERROR) {
++		gEngfuncs.Con_Printf("OpenGL Error in %s: 0x%X\n", context, err);
++	}
++}
++
+ // ─────────────────────────── GL Extension Func Ptrs ──────────────────────

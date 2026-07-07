@@ -44,6 +44,7 @@ class CCrossbowBolt : public CBaseEntity
 	int m_iTrail;
 
 public:
+	EHANDLE m_hThrower;
 	static CCrossbowBolt *BoltCreate( void );
 };
 LINK_ENTITY_TO_CLASS( crossbow_bolt, CCrossbowBolt );
@@ -73,6 +74,7 @@ void CCrossbowBolt::Spawn( )
 
 	SetTouch( &CCrossbowBolt::BoltTouch );
 	SetThink( &CCrossbowBolt::BubbleThink );
+	m_hThrower = NULL;
 	pev->nextthink = gpGlobals->time + 0.2;
 }
 
@@ -102,9 +104,13 @@ void CCrossbowBolt::BoltTouch( CBaseEntity *pOther )
 	if (pOther->pev->takedamage)
 	{
 		TraceResult tr = UTIL_GetGlobalTrace( );
-		entvars_t	*pevOwner;
-
-		pevOwner = VARS( pev->owner );
+		entvars_t *pevOwner;
+		if ( (CBaseEntity *)m_hThrower != NULL )
+			pevOwner = m_hThrower->pev;
+		else if ( pev->owner )
+			pevOwner = VARS( pev->owner );
+		else
+			pevOwner = NULL;
 
 		// UNDONE: this needs to call TraceAttack instead
 		ClearMultiDamage( );
@@ -207,7 +213,9 @@ void CCrossbowBolt::ExplodeThink( void )
 
 	entvars_t *pevOwner;
 
-	if ( pev->owner )
+	if ( (CBaseEntity *)m_hThrower != NULL )
+		pevOwner = m_hThrower->pev;
+	else if ( pev->owner )
 		pevOwner = VARS( pev->owner );
 	else
 		pevOwner = NULL;
@@ -415,6 +423,7 @@ void CCrossbow::FireBolt()
 	pBolt->pev->origin = vecSrc;
 	pBolt->pev->angles = anglesAim;
 	pBolt->pev->owner = m_pPlayer->edict();
+	pBolt->m_hThrower = m_pPlayer;
 
 	if (m_pPlayer->pev->waterlevel == 3)
 	{

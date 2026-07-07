@@ -1,0 +1,64 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -211,14 +211,15 @@
+ 		glEnable(GL_BLEND);
+ 		glBlendFunc(GL_ONE, GL_ONE);
+ 		glColor4f(0.2f, 0.2f, 0.2f, 1.f);
+-		DrawQuadUV(-step, 0,    1.f-step, 1.f);   // left
+-		DrawQuadUV( step, 0,    1.f+step, 1.f);   // right
+-		DrawQuadUV(0,    -step, 1.f,      1.f-step);   // down
+-		DrawQuadUV(0,     step, 1.f,      1.f+step);   // up
++		float bu = (float)scratch_w / 512.f;
++		float bv = (float)scratch_h / 512.f;
++		DrawQuadUV(-step, 0,    bu-step, bv);   // left
++		DrawQuadUV( step, 0,    bu+step, bv);   // right
++		DrawQuadUV(0,    -step, bu,      bv-step);   // down
++		DrawQuadUV(0,     step, bu,      bv+step);   // up
+ 		glDisable(GL_BLEND);
+ 
+ 		glBindTexture(GL_TEXTURE_2D, g_TexBloom[dst]);
+-		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, 512, 512);
++		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], scratch_w, scratch_h);
+ 		src = dst;
+ 		step *= 1.6f;
+ 	}
+@@ -226,10 +227,14 @@
+-	// Step 5: Restore the contaminated bottom-left 512x512 region of the screen using the clean g_TexScreen backup
+-	glViewport(0, 0, w, h);
++	// Step 5: Restore the contaminated scratch_w x scratch_h region of the screen using the clean g_TexScreen backup
++	glViewport(vp[0], vp[1], w, h);
+ 	glBindTexture(GL_TEXTURE_2D, g_TexScreen);
+ 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+ 	glDisable(GL_BLEND);
+ 	glColor4f(1,1,1,1);
+-	// We perfectly restore the entire screen using the valid u/v region of the clean g_TexScreen backup
+-	DrawQuadUV(0, 0, u, v);
++	
++	float rx = (float)scratch_w / w;
++	float ry = (float)scratch_h / h;
++	float ru = rx * u;
++	float rv = ry * v;
++	DrawQuadUV(0, 0, ru, rv, 0.f, 0.f, rx, ry);
+ 
+ 	// Step 4: restore viewport; blend bloom additively onto framebuffer.
+ 	// The engine's 3D scene is already in the framebuffer — we never cleared it.
+ 	glViewport(vp[0], vp[1], vp[2], vp[3]);
+ 	glBindTexture(GL_TEXTURE_2D, g_TexBloom[src]);
+ 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+ 	glEnable(GL_BLEND);
+ 	glBlendFunc(GL_ONE, GL_ONE);
+ 
+ 	// Slightly expanded pass for wide soft glow
+ 	float pad = 0.006f;
+ 	glColor4f(intensity, intensity, intensity, 1.f);
+-	DrawQuadUV(-pad, -pad, 1.f+pad, 1.f+pad);
++	float bu = (float)scratch_w / 512.f;
++	float bv = (float)scratch_h / 512.f;
++	DrawQuadUV(-pad, -pad, bu+pad, bv+pad);
+ 
+ 	// Tight bright core pass
+ 	float cx2 = intensity * 0.35f;
+ 	glColor4f(cx2, cx2, cx2, 1.f);
+-	DrawQuadUV(0, 0, 1, 1);
++	DrawQuadUV(0, 0, bu, bv);
+ 

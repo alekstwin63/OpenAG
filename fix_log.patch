@@ -1,0 +1,27 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -2,12 +2,4 @@
+ //
+ // ==============================================================================
+ 
+-static void CheckGLError(const char* context) {
+-	GLenum err;
+-	while ((err = glGetError()) != GL_NO_ERROR) {
+-		gEngfuncs.Con_Printf("OpenGL Error in %s: 0x%X\n", context, err);
+-	}
+-}
+-
+-
+ #include "hud.h"
+@@ -21,4 +13,11 @@
+ //  OpenGL Extensions & Globals
+ // ==============================================================================
+ 
++static void CheckGLError(const char* context) {
++	GLenum err;
++	while ((err = glGetError()) != GL_NO_ERROR) {
++		gEngfuncs.Con_Printf("OpenGL Error in %s: 0x%X\n", context, err);
++	}
++}
++
+ #ifndef GL_TEXTURE0

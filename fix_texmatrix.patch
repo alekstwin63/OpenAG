@@ -1,0 +1,11 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -340,6 +340,9 @@
+ 	glDisable(GL_DEPTH_TEST);
+ 	glDepthMask(GL_FALSE);
+ 	glColor4f(1, 1, 1, 1);
++	glMatrixMode(GL_TEXTURE);
++	glLoadIdentity();
++	glMatrixMode(GL_MODELVIEW);
+ 	glActiveTexture(GL_TEXTURE0);
+ 	glBegin(GL_QUADS);

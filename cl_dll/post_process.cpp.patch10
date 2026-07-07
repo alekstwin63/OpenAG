@@ -1,0 +1,11 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -679,7 +679,7 @@
+ 		
+ 		if (ssaoOn) {
+ 			glBindTexture(GL_TEXTURE_2D, g_TexDepth);
+-			glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], w, h);
++			// glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], w, h);
+ 			DrawSSAO(w, h, u, v, vp);
+ 			// Update g_TexScreen with the AO'd screen so that bloom/motion blur use the AO'd version
+ 			glBindTexture(GL_TEXTURE_2D, g_TexScreen);

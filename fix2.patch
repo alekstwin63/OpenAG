@@ -1,0 +1,13 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -21,2 +21,10 @@
+ 
++static void CheckGLError(const char* context) {
++	GLenum err;
++	while ((err = glGetError()) != GL_NO_ERROR) {
++		gEngfuncs.Con_Printf("OpenGL Error in %s: 0x%X\n", context, err);
++	}
++}
++
++
+ #ifndef GL_TEXTURE0

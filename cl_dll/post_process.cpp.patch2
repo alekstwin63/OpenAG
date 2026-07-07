@@ -1,0 +1,28 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -188,7 +188,7 @@
+ 
+ 	// Capture downsampled thresholded image into bloom[0]
+ 	glBindTexture(GL_TEXTURE_2D, g_TexBloom[0]);
+-	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, 512, 512);
++	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, vp[0], vp[1], scratch_w, scratch_h);
+ 
+ 	// Step 3: iterative Gaussian-style blur (ping-pong)
+ 	int src = 0;
+@@ -197,14 +197,14 @@
+ 	for (int p = 0; p < passes; p++)
+ 	{
+ 		int dst = 1 - src;
+-		glViewport(0, 0, 512, 512);
++		glViewport(vp[0], vp[1], scratch_w, scratch_h);
+ 		glBindTexture(GL_TEXTURE_2D, g_TexBloom[src]);
+ 		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+ 
+ 		// Centre sample (weight 1/5)
+ 		glDisable(GL_BLEND);
+ 		glColor4f(0.2f, 0.2f, 0.2f, 1.f);
+-		DrawQuadUV(0, 0, 1, 1);
++		DrawQuadUV(0, 0, (float)scratch_w/512.f, (float)scratch_h/512.f);
+ 
+ 		// 4 cardinal samples (weight 1/5 each), additive
+ 		glEnable(GL_BLEND);

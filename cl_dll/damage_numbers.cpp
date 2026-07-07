@@ -51,6 +51,12 @@ namespace damage_numbers
 		HOOK_MESSAGE(DmgDealt);
 	}
 
+	void reset()
+	{
+		g_bServerSendsDamage = false;
+		g_DamageNumbers.clear();
+	}
+
 	void add_predicted_damage(const Vector& origin, int damage, bool is_headshot)
 	{
 		if (g_bServerSendsDamage)

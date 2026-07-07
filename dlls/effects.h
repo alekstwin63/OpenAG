@@ -139,8 +139,13 @@ public:
 	inline int	GetStartEntity( void ) { return pev->sequence & 0xFFF; }
 	inline int	GetEndEntity( void ) { return pev->skin & 0xFFF; }
 
+#ifdef CLIENT_DLL
+	inline const Vector &GetStartPos( void ) { return pev->origin; }
+	inline const Vector &GetEndPos( void ) { return pev->angles; }
+#else
 	const Vector &GetStartPos( void );
 	const Vector &GetEndPos( void );
+#endif
 
 	Vector Center( void ) { return (GetStartPos() + GetEndPos()) * 0.5; }; // center point of beam
 

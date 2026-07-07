@@ -31,6 +31,7 @@
 #include "cl_entity.h"
 #include "triangleapi.h"
 #include "Exports.h"
+#include "post_process.h"
 
 #include "particleman.h"
 #include "tri.h"
@@ -153,6 +154,11 @@ Render any triangles with transparent rendermode needs here
 void CL_DLLEXPORT HUD_DrawTransparentTriangles( void )
 {
 //	RecClDrawTransparentTriangles();
+
+	// Capture depth HERE: transparent pass runs while 3D depth buffer is still
+	// populated with scene geometry. By HUD_DrawNormalTriangles the engine
+	// has already cleared depth for HUD/viewmodel rendering.
+	post_process::capture_depth();
 
 #if defined( _TFC )
 	RunEventList();

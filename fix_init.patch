@@ -1,0 +1,21 @@
+--- cl_dll/post_process.cpp
++++ cl_dll/post_process.cpp
+@@ -321,11 +321,14 @@
+ {
+ 	int tw = NextPOT(w), th = NextPOT(h);
+ 	if (!g_TexScreen) {
+ 		MakeTexture(g_TexScreen, tw, th);
++		CheckGLError("InitTextures MakeTexture Screen");
+ 	}
+ 	if (!g_TexDepth) {
+ 		glGenTextures(1, &g_TexDepth);
+ 		glBindTexture(GL_TEXTURE_2D, g_TexDepth);
+ 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+ 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+ 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+ 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+ 		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, tw, th, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
++		CheckGLError("InitTextures MakeTexture Depth");
+ 	}
+ 	if (!g_TexBloom[0]) MakeTexture(g_TexBloom[0], 512, 512);
+ 	if (!g_TexBloom[1]) MakeTexture(g_TexBloom[1], 512, 512);

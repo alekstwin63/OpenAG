@@ -84,8 +84,16 @@ void CGrenade::Explode( TraceResult *pTrace, int bitsDamageType )
 	MESSAGE_END();
 
 	CSoundEnt::InsertSound ( bits_SOUND_COMBAT, pev->origin, NORMAL_EXPLOSION_VOLUME, 3.0 );
+	// Update thrower if owner is still valid but thrower is not set
+	if ( (CBaseEntity *)m_hThrower == NULL && pev->owner != NULL )
+	{
+		m_hThrower = Instance( pev->owner );
+	}
+
 	entvars_t *pevOwner;
-	if ( pev->owner )
+	if ( (CBaseEntity *)m_hThrower != NULL )
+		pevOwner = m_hThrower->pev;
+	else if ( pev->owner )
 		pevOwner = VARS( pev->owner );
 	else
 		pevOwner = NULL;
@@ -353,6 +361,7 @@ void CGrenade:: Spawn( void )
 
 	pev->dmg = 100;
 	m_fRegisteredSound = FALSE;
+	m_hThrower = NULL;
 }
 
 
@@ -366,6 +375,7 @@ CGrenade *CGrenade::ShootContact( entvars_t *pevOwner, Vector vecStart, Vector v
 	pGrenade->pev->velocity = vecVelocity;
 	pGrenade->pev->angles = UTIL_VecToAngles (pGrenade->pev->velocity);
 	pGrenade->pev->owner = ENT(pevOwner);
+	pGrenade->m_hThrower = Instance(pevOwner);
 	
 	// make monsters afaid of it while in the air
 	pGrenade->SetThink( &CGrenade::DangerSoundThink );
@@ -391,6 +401,7 @@ CGrenade * CGrenade:: ShootTimed( entvars_t *pevOwner, Vector vecStart, Vector v
 	pGrenade->pev->velocity = vecVelocity;
 	pGrenade->pev->angles = UTIL_VecToAngles(pGrenade->pev->velocity);
 	pGrenade->pev->owner = ENT(pevOwner);
+	pGrenade->m_hThrower = Instance(pevOwner);
 	
 	pGrenade->SetTouch( &CGrenade::BounceTouch );	// Bounce if touched
 	
@@ -440,6 +451,7 @@ CGrenade * CGrenade :: ShootSatchelCharge( entvars_t *pevOwner, Vector vecStart,
 	pGrenade->pev->velocity = vecVelocity;
 	pGrenade->pev->angles = g_vecZero;
 	pGrenade->pev->owner = ENT(pevOwner);
+	pGrenade->m_hThrower = Instance(pevOwner);
 	
 	// Detonate in "time" seconds
 	pGrenade->SetThink( &CGrenade::SUB_DoNothing );

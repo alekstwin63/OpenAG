@@ -93,6 +93,13 @@ void CSatchelCharge :: Spawn( void )
 
 void CSatchelCharge::SatchelSlide( CBaseEntity *pOther )
 {
+#ifndef CLIENT_DLL
+	if ((CBaseEntity *)m_hThrower == NULL && pev->owner != NULL)
+	{
+		m_hThrower = Instance(pev->owner);
+	}
+#endif
+
 	entvars_t	*pevOther = pOther->pev;
 
 	// don't hit the guy that launched this grenade
@@ -123,6 +130,13 @@ void CSatchelCharge::SatchelSlide( CBaseEntity *pOther )
 
 void CSatchelCharge :: SatchelThink( void )
 {
+#ifndef CLIENT_DLL
+	if ((CBaseEntity *)m_hThrower == NULL && pev->owner != NULL)
+	{
+		m_hThrower = Instance(pev->owner);
+	}
+#endif
+
 	StudioFrameAdvance( );
 	pev->nextthink = gpGlobals->time + 0.1;
 

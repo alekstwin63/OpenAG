@@ -1,0 +1,7 @@
+#pragma once
+
+namespace post_process
+{
+	void init();
+	void draw();
+}

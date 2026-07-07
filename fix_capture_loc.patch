@@ -1,0 +1,17 @@
+--- cl_dll/tri.cpp
++++ cl_dll/tri.cpp
+@@ -51,6 +51,7 @@
+ {
+ //	RecClDrawNormalTriangles();
+ 	gHUD.m_Spectator.DrawOverview();
++	post_process::capture_depth();
+ }
+ 
+ #if defined( _TFC )
+@@ -172,7 +173,5 @@
+ 	DrawServerTriggers();
+ 
+ 	gEngfuncs.pTriAPI->RenderMode(kRenderNormal);
+-	
+-	post_process::capture_depth();
+ }
