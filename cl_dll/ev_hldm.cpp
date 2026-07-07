@@ -945,6 +945,9 @@ void EV_FireGauss( event_args_t *args )
 			physent_t *pe = gEngfuncs.pEventAPI->EV_GetPhysent( tr.ent ); 
 			if ( pe && pe->solid != SOLID_BSP && pe->player && EV_IsLocal( idx ) )
 			{
+				bool is_head = (tr.hitgroup == 1);
+				int dmg = m_fPrimaryFire ? 20 : (int)flDamage;
+				damage_numbers::add_predicted_damage(tr.endpos, dmg, is_head);
 			}
 		}
 
