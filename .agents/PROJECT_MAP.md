@@ -176,3 +176,14 @@ Currently, any attempt to read depth via `glReadPixels(..., GL_DEPTH_COMPONENT, 
 - Is there a more appropriate rendering hook in the GoldSrc client library (e.g., in `StudioModelRenderer.cpp`, `view.cpp` / `V_CalcRefdef`, or custom tri API hooks) where the depth buffer still holds the opaque world/player geometry?
 - Is the engine rendering to a custom Framebuffer Object (FBO) or a separate context/renderbuffer, and if so, how can we bind/query it to read its depth attachment?
 - Does the engine disable depth writes or change the depth function (`glDepthMask`, `glDepthFunc`) during certain passes, causing the read to fail or return default cleared values?
+
+### PROBLEM SOLVED!
+
+## 6. Resolved Challenges: SSAO & MSAA Depth Capture
+
+*Context for AI agents reviewing Git history regarding early SSAO iterations.*
+
+**The Problem**: Early attempts to read the depth buffer returned `1.0` or triggered `GL_INVALID_OPERATION` (0x502).
+**The Cause**: The 25th Anniversary Half-Life update utilizes an MSAA (Multisample Anti-Aliasing) Framebuffer. OpenGL prohibits direct pixel reading (`glReadPixels`) or direct GPU texture sampling from multisampled FBOs.
+**The Solution**: 
+We now generate a custom single-sampled FBO (`g_DepthBlitFBO`). During `HUD_DrawTransparentTriangles` (when scene geometry is fully rendered but the depth buffer is not yet cleared by the viewmodel pass), we hardware-blit the engine's MSAA depth buffer into our custom FBO via `glBlitFramebufferEXT`. This allows standard shaders to sample `g_TexDepth` without memory-bandwidth bottlenecks or GL errors.
